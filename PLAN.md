@@ -125,9 +125,6 @@ Regra de dependência: `Api → Application → Infrastructure`. Api nunca acess
 
 # 2. Solution legada + migração para slnx
 dotnet new sln -n ShortUrl
-dotnet sln ShortUrl.sln migrate
-# gera ShortUrl.slnx -> confira e apague ShortUrl.sln (manter só um formato)
-# Alternativa via Visual Studio 2022 17.12+: criar solução já marcando "Use new solution file format (.slnx)"
 
 # 3. Projetos sempre com --framework net8.0 (sem isso o SDK 10 cria net10.0 por padrão)
 dotnet new webapi -n ShortUrl.Api -o src/ShortUrl.Api --no-https --framework net8.0
@@ -136,9 +133,13 @@ dotnet new classlib -n ShortUrl.Application -o src/ShortUrl.Application --framew
 dotnet new classlib -n ShortUrl.Infrastructure -o src/ShortUrl.Infrastructure --framework net8.0
 dotnet new xunit -n ShortUrl.Tests -o tests/ShortUrl.Tests --framework net8.0
 dotnet sln ShortUrl.slnx add (Get-ChildItem -Recurse *.csproj)
-dotnet add src/ShortUrl.Api package Microsoft.EntityFrameworkCore.Sqlite
-dotnet add src/ShortUrl.Infrastructure package Microsoft.EntityFrameworkCore.Sqlite
-dotnet tool install --global dotnet-ef
+# ATENÇÃO: SDK 10 puxa o EF mais novo (10.x) por padrão, que NÃO roda em net8.0 (erro NU1202).
+# Sempre trave na linha 8.x, alinhada ao runtime instalado (8.0.31 aqui):
+dotnet add src/ShortUrl.Infrastructure package Microsoft.EntityFrameworkCore.Sqlite --version 8.0.31
+dotnet add src/ShortUrl.Api package Microsoft.EntityFrameworkCore.Sqlite --version 8.0.31
+# Design no projeto de startup (Api) para o dotnet-ef gerar migrations:
+dotnet add src/ShortUrl.Api package Microsoft.EntityFrameworkCore.Design --version 8.0.31
+dotnet tool install --global dotnet-ef --version 8.*
 ```
 
 Validação da Fase 0: `dotnet build ShortUrl.slnx` passa e `dotnet test ShortUrl.slnx` roda (mesmo sem testes ainda).
