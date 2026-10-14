@@ -20,4 +20,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ShortUrl.Api\ShortUrl.Api.csproj" />
+    <ProjectReference Include="..\..\src\ShortUrl.Application\ShortUrl.Application.csproj" />
+    <ProjectReference Include="..\..\src\ShortUrl.Infrastructure\ShortUrl.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
