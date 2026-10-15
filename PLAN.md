@@ -100,10 +100,10 @@ short-url-api/
 ├── ShortUrl.slnx            # Solution formato novo (SDK 10 / VS 2022 17.12+). Target continua net8.0.
 ├── global.json              # Pina SDK 10+ para tooling (slnx), sem mudar o runtime (net8.0)
 ├── src/
-│   ├── ShortUrl.Domain/         # Entidade ShortUrl (núcleo, sem dependências)
+│   ├── ShortUrl.Domain/         # Entidade ShortUrl + ICodeGenerator (porta). Núcleo, sem dependências
 │   ├── ShortUrl.Api/            # Controllers, Program.cs, DI, RateLimiter, Swagger
-│   ├── ShortUrl.Application/    # DTOs, IShortUrlService, ShortUrlService, ICodeGenerator
-│   ├── ShortUrl.Infrastructure/ # AppDbContext, EF configs, CodeGenerator (Base62 + RNG)
+│   ├── ShortUrl.Application/    # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
+│   ├── ShortUrl.Infrastructure/ # AppDbContext, EF configs, Base62CodeGenerator (impl. da porta)
 ├── tests/
 │   └── ShortUrl.Tests/          # xUnit: CodeGenerator + Service (com InMemory ou SQLite in-memory) + 1 teste de integração com WebApplicationFactory
 ├── Dockerfile
