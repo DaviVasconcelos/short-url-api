@@ -10,4 +10,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.31" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ShortUrl.Domain\ShortUrl.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

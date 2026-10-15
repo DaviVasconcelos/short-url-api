@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ShortUrl.Infrastructure\ShortUrl.Infrastructure.csproj" />
+    <ProjectReference Include="..\ShortUrl.Domain\ShortUrl.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
