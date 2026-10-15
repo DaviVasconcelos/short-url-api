@@ -48,6 +48,8 @@ Escopo propositalmente pequeno. O valor está na **qualidade da execução**, n�
 ## 3. Modelo de dados
 
 ```csharp
+namespace ShortUrl.Domain; // projeto ShortUrl.Domain
+
 public class ShortUrl
 {
     public int Id { get; set; }
@@ -91,17 +93,17 @@ Health check nativo do ASP.NET para Docker/Render.
 
 ## 5. Estrutura de pastas (Clean Architecture simplificada)
 
-Usa 1 solution com 3 projetos:
+Usa 1 solution com 4 projetos:
 
 ```
 short-url-api/
 ├── ShortUrl.slnx            # Solution formato novo (SDK 10 / VS 2022 17.12+). Target continua net8.0.
 ├── global.json              # Pina SDK 10+ para tooling (slnx), sem mudar o runtime (net8.0)
 ├── src/
+│   ├── ShortUrl.Domain/         # Entidade ShortUrl (núcleo, sem dependências)
 │   ├── ShortUrl.Api/            # Controllers, Program.cs, DI, RateLimiter, Swagger
 │   ├── ShortUrl.Application/    # DTOs, IShortUrlService, ShortUrlService, ICodeGenerator
 │   ├── ShortUrl.Infrastructure/ # AppDbContext, EF configs, CodeGenerator (Base62 + RNG)
-│   └── (Domain embutido no Application para manter pequeno — classe ShortUrl aqui ou em Domain separado se preferir)
 ├── tests/
 │   └── ShortUrl.Tests/          # xUnit: CodeGenerator + Service (com InMemory ou SQLite in-memory) + 1 teste de integração com WebApplicationFactory
 ├── Dockerfile
@@ -109,7 +111,13 @@ short-url-api/
 └── README.md
 ```
 
-Regra de dependência: `Api → Application → Infrastructure`. Api nunca acessa DbContext direto, só via interface.
+Regra de dependência:
+- `Domain` depende de nada.
+- `Infrastructure → Domain` (o `AppDbContext` mapeia a entidade).
+- `Application → Infrastructure + Domain` (serviço usa `DbContext` e a entidade).
+- `Api → Application + Infrastructure` (só faz o wiring de DI; Controller nunca toca `DbContext` direto, só `IShortUrlService`).
+
+> Nota: o `Domain` foi extraído para um projeto próprio porque a entidade é usada por `Application` e `Infrastructure`. Se ficasse só no `Application`, o `Infrastructure` não a enxergaria (geraria dependência circular).
 
 ## 6. Passo a passo de execução
 
@@ -145,10 +153,11 @@ dotnet tool install --global dotnet-ef --version 8.*
 Validação da Fase 0: `dotnet build ShortUrl.slnx` passa e `dotnet test ShortUrl.slnx` roda (mesmo sem testes ainda).
 
 ### Fase 1 — Domínio + Banco (1h)
-1. Criar entidade `ShortUrl`.
-2. Criar `AppDbContext` com índice único.
-3. `dotnet ef migrations add InitialCreate --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api`
-4. Testar `dotnet ef database update`.
+1. Criar projeto `ShortUrl.Domain` (classlib, net8.0) e a entidade `ShortUrl` lá.
+2. `Infrastructure` e `Application` referenciam `Domain`.
+3. Criar `AppDbContext` (em `Infrastructure/Persistence`) com mapeamento Fluent + índice único em `ShortCode`; registrar no `Program.cs` com `UseSqlite`.
+4. `dotnet ef migrations add InitialCreate --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api --output-dir Persistence/Migrations`
+5. Testar `dotnet ef database update` (gera `shorturl.db`, já ignorado no `.gitignore`).
 
 ### Fase 2 — Regra de negócio (2h)
 1. `ICodeGenerator` + implementação Base62 com `RandomNumberGenerator`.

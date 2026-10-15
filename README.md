@@ -91,6 +91,7 @@ Error codes: `400` invalid URL, `404` not found, `409` alias in use, `410` expir
 ShortUrl.slnx               # Solution (new XML format, SDK 10 / VS 2022 17.12+)
 global.json                # Pins .NET 10 SDK for tooling; runtime stays net8.0
 src/
+  ShortUrl.Domain/         # ShortUrl entity (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
   ShortUrl.Application/    # DTOs, IShortUrlService, ShortUrlService, ICodeGenerator
   ShortUrl.Infrastructure/ # AppDbContext, EF configs, Base62 CodeGenerator
@@ -98,7 +99,7 @@ tests/
   ShortUrl.Tests/          # Unit + 1 integration test
 ```
 
-Dependency rule: `Api -> Application -> Infrastructure`. Controllers never touch `DbContext` directly.
+Dependency rule: `Api -> Application -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
 
 ## Technical decisions
 
