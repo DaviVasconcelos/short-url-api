@@ -18,6 +18,12 @@ public sealed class ShortUrlService : IShortUrlService
     private static readonly Regex AliasPattern =
         new("^[a-zA-Z0-9_-]{3,30}$", RegexOptions.Compiled);
 
+    private static readonly HashSet<string> ReservedAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "api", "urls", "health", "swagger", "favicon.ico"
+        };
+
     private readonly AppDbContext _db;
     private readonly ICodeGenerator _codeGenerator;
     private readonly ShortUrlOptions _options;
@@ -37,7 +43,7 @@ public sealed class ShortUrlService : IShortUrlService
             return CreateShortUrlResult.InvalidUrl();
 
         var alias = string.IsNullOrWhiteSpace(request.CustomAlias) ? null : request.CustomAlias.Trim();
-        if (alias is not null && !AliasPattern.IsMatch(alias))
+        if (alias is not null && (!AliasPattern.IsMatch(alias) || ReservedAliases.Contains(alias)))
             return CreateShortUrlResult.InvalidAlias();
 
         var expiresAt = ResolveExpiry(request.ExpiresInDays);
