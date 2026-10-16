@@ -2,13 +2,20 @@
 
 Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio project. Everything here is verified against the current tree. Note that `README.md` and `PLAN.md` describe more than exists yet.
 
+## Current state
+
+- **Fases 0-3 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs.
+- **Next: Fase 4 — Cache (`IMemoryCache`).** The agreed design lives in `PLAN.md` §Fase 4 / §2.4 — follow it instead of re-deciding.
+- **Pending:** Fase 5 tests (none exist), Fase 6 Docker + CI (no `Dockerfile` / `.github/workflows` yet), Fase 7 README polish.
+
 ## Build, test, run
 
 - Solution is `ShortUrl.slnx` (new XML format, not `.sln`). Pass it explicitly: `dotnet build ShortUrl.slnx`, `dotnet test ShortUrl.slnx`.
 - `global.json` pins SDK 10.0.401, but every project targets `net8.0`. Do not change `<TargetFramework>`.
 - Pin Microsoft packages to `8.0.x` (currently `8.0.31`). `dotnet add package X` without `--version` resolves 10.x and fails with `NU1202`.
-- Run the API: `dotnet run --project src/ShortUrl.Api` (Swagger at `/swagger`).
-- No tests exist yet — `dotnet test` finds none (planned in `PLAN.md` Fase 5).
+- Run the API: `dotnet run --project src/ShortUrl.Api` → `http://localhost:5000` (Swagger at `/swagger`, health at `/health`).
+- `launchSettings.json` and `ShortUrl:BaseUrl` both use port `5000`; keep them in sync.
+- No tests exist yet — `dotnet test` finds none (planned in `PLAN.md` Fase 5). `src/ShortUrl.Api/ShortUrl.Api.http` has ready-to-run requests for the whole flow.
 
 ## EF Core migrations
 
@@ -22,14 +29,18 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 - Projects under `src/`: `ShortUrl.Domain`, `ShortUrl.Application`, `ShortUrl.Infrastructure`, `ShortUrl.Api`.
 - Edges: `Api -> Application -> Infrastructure`, plus `Application -> Domain` and `Infrastructure -> Domain`.
 - **`Application` references `Infrastructure`, not the reverse.** `Infrastructure` must never reference `Application`. Any interface that `Infrastructure` implements must live in `ShortUrl.Domain` (e.g. `ICodeGenerator` is in `Domain/Abstractions`, not `Application`).
-- DI wiring happens only in `src/ShortUrl.Api/Program.cs`. The (not-yet-written) controllers must consume `IShortUrlService`, never `AppDbContext`.
+- DI wiring happens only in `src/ShortUrl.Api/Program.cs`. Controllers (`src/ShortUrl.Api/Controllers`) consume `IShortUrlService`, never `AppDbContext`.
+- `ShortUrlService` (in `Application`) is the one place that touches `AppDbContext` and `ICodeGenerator`. Its constructor is the DI seam: Fase 4 adds `IMemoryCache` there.
 
 ## Gotchas
 
 - Root namespace is `ShortUrl` and the domain entity is also `ShortUrl`, so unqualified `ShortUrl` is ambiguous. Follow the existing aliases: `using Domain = ShortUrl.Domain;` and `using ShortUrlEntity = ShortUrl.Domain.ShortUrl;`.
-- Reality vs. docs: no controllers/endpoints yet (only DI + Swagger), no `Dockerfile`, no `.github/workflows`. The README CI badge points at a workflow that does not exist.
-- Port mismatch: `launchSettings.json` runs the `http` profile on `localhost:5212`, while `appsettings.json` has `ShortUrl:BaseUrl` = `http://localhost:5000`. Generated `shortUrl` values use the config value.
+- Reality vs. docs: controllers/endpoints now exist (Fase 3), but no `Dockerfile` / `.github/workflows`, and no tests. The README CI badge points at a workflow that does not exist.
 - `ShortUrlOptions` is a singleton POCO bound via `Configuration.GetSection("ShortUrl")`, not `IOptions<T>`.
+- Rate limiting: policy name `"create-url"` (fixed window, 30/min per IP), applied via `[EnableRateLimiting("create-url")]` on `UrlsController.Create`. `OnRejected` returns `429` + `Retry-After`.
+- Reserved aliases rejected on create (case-insensitive): `api`, `urls`, `health`, `swagger`, `favicon.ico`. Keep this list in sync with new root routes.
+- `ShortUrl.Api.csproj` sets `GenerateDocumentationFile` + `<NoWarn>CS1591</NoWarn>`; add XML `<summary>`/`<response>` on new actions (consumed by Swagger via `IncludeXmlComments`).
+- `RedirectController` is hidden from Swagger (`[ApiExplorerSettings(IgnoreApi = true)]`) and owns the root route `/{code}`; literal routes like `/health` win over it in routing.
 
 ## Conventions
 

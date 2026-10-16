@@ -32,8 +32,12 @@ Escopo propositalmente pequeno. O valor está na **qualidade da execução**, n�
 - Limpeza: não precisa de job agora. Valida na leitura. Pode citar como melhoria futura (BackgroundService).
 
 ### 2.4 Cache
-- `IMemoryCache` para `GET /{code}` (caminho quente). TTL curto, ex: 5 min.
-- Estratégia: cache-aside. Busca no cache → se miss, busca no banco e popula. No incremento de cliques, atualiza banco (pode ser async/fire-and-forget simples, ou update direto — para projeto pequeno, update direto está ok).
+- `IMemoryCache` para `GET /{code}` (caminho quente). TTL curto, configurável (`ShortUrlOptions.CacheTtlSeconds`, default 300 = 5 min).
+- Estratégia: **cache-aside**. Busca no cache → se miss, busca no banco e popula.
+- **O que cachear:** apenas `originalUrl` + `expiresAt` (o necessário para decidir 302/410). **Nunca** cachear `ClickCount`, senão a contagem congela.
+- **Incremento de clique:** continua indo ao banco, mas via `ExecuteUpdateAsync` (`UPDATE ShortUrls SET ClickCount = ClickCount + 1 WHERE ShortCode = @code`) — sem `SELECT` nem change tracker. Assim o cache economiza de fato a query quente (o `SELECT`).
+- **Invalidação:** `ShortUrlService.DeleteAsync` remove a chave. Criação não precisa invalidar (código novo). TTL cobre o resto.
+- Chave sugerida: `url:{code}`.
 - Cite no README que em produção usaria Redis/Distributed Cache.
 
 ### 2.5 Rate Limiting (.NET 8 nativo)
@@ -176,8 +180,19 @@ Validação da Fase 0: `dotnet build ShortUrl.slnx` passa e `dotnet test ShortUr
 6. Alinhar porta local para 5000 (`launchSettings.json`) com `ShortUrl.BaseUrl`.
 
 ### Fase 4 — Cache (1h)
-1. `AddMemoryCache`, decora leitura do redirect.
-2. Medir: sem cache vs com cache (cite no README).
+
+Design já decidido (ver §2.4). Implementar nesta ordem:
+1. `builder.Services.AddMemoryCache();` no `Program.cs`.
+2. Adicionar `CacheTtlSeconds` (default 300) em `ShortUrlOptions`.
+3. Injetar `IMemoryCache` no construtor de `ShortUrlService` (é o seam de DI; os testes da Fase 5 serão escritos depois, já com esse construtor).
+4. `GetOriginalAsync` (cache-aside):
+   - chave `url:{code}`; guardar `{ originalUrl, expiresAt }` (record leve, ex. `CachedShortUrl`).
+   - hit → valida expiração com o `expiresAt` cacheado; não expirado → incrementa clique via `ExecuteUpdateAsync` e retorna `Found`.
+   - miss → `SELECT` no banco; `null` → `NotFound`; expirado → `Expired`; senão popula o cache (TTL) e incrementa clique.
+5. `DeleteAsync` → `_cache.Remove($"url:{code}")` após remover do banco.
+6. **Medir sem cache vs com cache**: rodar a API com log de comandos do EF (`"Microsoft.EntityFrameworkCore.Database.Command": "Information"` em `appsettings.Development.json`), disparar `GET /{code}` duas vezes e comparar a contagem de `SELECT` (2x sem cache → 1x com cache). Registrar o resultado no README.
+
+Validação: build verde + smoke test do `.http` (302 continua, `ClickCount` continua incrementando na 2ª chamada).
 
 ### Fase 5 — Testes (2h)
 Mínimo que impressiona (5-8 testes):
