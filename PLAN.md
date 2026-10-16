@@ -37,13 +37,16 @@ Escopo propositalmente pequeno. O valor está na **qualidade da execução**, n�
 - Cite no README que em produção usaria Redis/Distributed Cache.
 
 ### 2.5 Rate Limiting (.NET 8 nativo)
-- Use `AddRateLimiter` com política Fixed Window: ex. 30 req/min por IP no `POST`. Evita spam/abuso.
+- Use `AddRateLimiter` com política Fixed Window: ex. 30 req/min **por IP** no `POST` (`RateLimitPartition.GetFixedWindowLimiter`, chave = `RemoteIpAddress`). Evita spam/abuso.
+- `OnRejected` → 429 + header `Retry-After`.
+- Nota de produção: atrás de proxy/load balancer, `RemoteIpAddress` é o do proxy; seria preciso `ForwardedHeaders`/`X-Forwarded-For`.
 - Isso impressiona porque pouca gente Júnior configura.
 
 ### 2.6 Validação e segurança mínima
 - Validar com `Uri.TryCreate(url, UriKind.Absolute)` + só aceitar `http/https`.
-- Bloquear localhost/rede interna básica para evitar SSRF em teste técnico (lista simples: rejeita `localhost`, `127.0.0.1`, `10.*`, `192.168.*` — pode ser simplificado, só mencione no README).
+- Bloquear localhost/rede interna básica para evitar SSRF em teste técnico (lista simples: rejeita `localhost`, `127.0.0.1`, `10.*`, `172.16-31.*`, `192.168.*`, `169.254.*`).
 - Tamanho máximo da URL: 2048 chars.
+- Reservar aliases que colidem com rotas do app: `api`, `urls`, `health`, `swagger`, `favicon.ico` → rejeitar como `InvalidAlias` (400).
 
 ## 3. Modelo de dados
 
@@ -165,11 +168,12 @@ Validação da Fase 0: `dotnet build ShortUrl.slnx` passa e `dotnet test ShortUr
 3. Validação de URL + alias + expiração aqui (não no controller).
 
 ### Fase 3 — API (2h)
-1. Controllers: `UrlsController` (POST/GET stats/DELETE) + redirect no `Program.cs` ou `RedirectController` (`GET /{code}`).
-2. `Results.Redirect` / `Redirect()` com 302.
-3. Global exception handler + ProblemDetails.
-4. Swagger com exemplos de request.
-5. Rate Limiter no POST + HealthChecks (`AddHealthChecks`).
+1. Controllers: `UrlsController` (`POST`/`GET stats`/`DELETE` em `api/urls`) + `RedirectController` (`GET /{code}` → 302, oculto do Swagger).
+2. `Redirect()` com 302 (permanente: false). `POST` → `CreatedAtAction` (201 + `Location`).
+3. Global exception handler (`IExceptionHandler`) + `AddProblemDetails`.
+4. Swagger com XML comments (`GenerateDocumentationFile`) + `[ProducesResponseType]`.
+5. Rate Limiter (Fixed Window 30/min por IP no POST) + HealthChecks (`AddHealthChecks().AddDbContextCheck<AppDbContext>()` em `/health`).
+6. Alinhar porta local para 5000 (`launchSettings.json`) com `ShortUrl.BaseUrl`.
 
 ### Fase 4 — Cache (1h)
 1. `AddMemoryCache`, decora leitura do redirect.

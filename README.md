@@ -107,7 +107,9 @@ Dependency rule: `Api -> Application -> Infrastructure`, with both `Application`
 - **Base62 7-char codes** via `RandomNumberGenerator` (~3.5T combos) + UNIQUE index + retry on collision.
 - **IMemoryCache** (5 min TTL) for the redirect path; Redis would be the next step in production.
 - **SQLite** for zero-setup local dev; EF Core makes switching to SQL Server a connection-string change.
-- **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse.
+- **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
+- **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
+- **`/health`** checks the SQLite context (`AddDbContextCheck`) so orchestrators can probe readiness.
 
 ## Configuration
 
