@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using ShortUrl.Application.Dtos;
 using ShortUrl.Application.Options;
 using ShortUrl.Domain.Abstractions;
@@ -26,12 +27,18 @@ public sealed class ShortUrlService : IShortUrlService
 
     private readonly AppDbContext _db;
     private readonly ICodeGenerator _codeGenerator;
+    private readonly IMemoryCache _cache;
     private readonly ShortUrlOptions _options;
 
-    public ShortUrlService(AppDbContext db, ICodeGenerator codeGenerator, ShortUrlOptions options)
+    public ShortUrlService(
+        AppDbContext db,
+        ICodeGenerator codeGenerator,
+        IMemoryCache cache,
+        ShortUrlOptions options)
     {
         _db = db;
         _codeGenerator = codeGenerator;
+        _cache = cache;
         _options = options;
     }
 
@@ -57,7 +64,28 @@ public sealed class ShortUrlService : IShortUrlService
         string shortCode,
         CancellationToken cancellationToken = default)
     {
+        var cacheKey = CacheKeyFor(shortCode);
+
+        if (_cache.TryGetValue(cacheKey, out CachedShortUrl? cached) && cached is not null)
+        {
+            if (cached.ExpiresAt is { } cachedExpiry && cachedExpiry <= DateTime.UtcNow)
+            {
+                _cache.Remove(cacheKey);
+                return GetShortUrlResult.Expired();
+            }
+
+            var affected = await IncrementClickAsync(shortCode, cancellationToken);
+            if (affected == 0)
+            {
+                _cache.Remove(cacheKey);
+                return GetShortUrlResult.NotFound();
+            }
+
+            return GetShortUrlResult.Found(cached.OriginalUrl);
+        }
+
         var entity = await _db.ShortUrls
+            .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ShortCode == shortCode, cancellationToken);
 
         if (entity is null)
@@ -66,8 +94,12 @@ public sealed class ShortUrlService : IShortUrlService
         if (entity.ExpiresAt is { } expiresAt && expiresAt <= DateTime.UtcNow)
             return GetShortUrlResult.Expired();
 
-        entity.ClickCount++;
-        await _db.SaveChangesAsync(cancellationToken);
+        _cache.Set(
+            cacheKey,
+            new CachedShortUrl(entity.OriginalUrl, entity.ExpiresAt),
+            TimeSpan.FromSeconds(_options.CacheTtlSeconds));
+
+        await IncrementClickAsync(shortCode, cancellationToken);
 
         return GetShortUrlResult.Found(entity.OriginalUrl);
     }
@@ -103,8 +135,19 @@ public sealed class ShortUrlService : IShortUrlService
         _db.ShortUrls.Remove(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
+        _cache.Remove(CacheKeyFor(shortCode));
+
         return true;
     }
+
+    private Task<int> IncrementClickAsync(string shortCode, CancellationToken cancellationToken) =>
+        _db.ShortUrls
+            .Where(x => x.ShortCode == shortCode)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(x => x.ClickCount, x => x.ClickCount + 1),
+                cancellationToken);
+
+    private static string CacheKeyFor(string shortCode) => $"url:{shortCode}";
 
     private async Task<CreateShortUrlResult> CreateWithAliasAsync(
         string alias,

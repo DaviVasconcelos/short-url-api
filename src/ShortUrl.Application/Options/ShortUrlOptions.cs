@@ -7,4 +7,6 @@ public sealed class ShortUrlOptions
     public int CodeLength { get; set; } = 7;
 
     public int DefaultExpiryDays { get; set; } = 30;
+
+    public int CacheTtlSeconds { get; set; } = 300;
 }

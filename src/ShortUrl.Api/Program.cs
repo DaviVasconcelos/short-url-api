@@ -18,6 +18,7 @@ var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlO
     ?? new ShortUrlOptions();
 
 builder.Services.AddSingleton(shortUrlOptions);
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
 
