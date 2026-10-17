@@ -26,7 +26,7 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution formato novo)
 - **EF Core + SQLite** (swap to SQL Server via connection string)
 - **IMemoryCache**, **Rate Limiting** (built-in .NET 8)
-- **Swagger / Swashbuckle**, **xUnit + Moq**, **WebApplicationFactory** for integration test
+- **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration test
 - **Docker** multi-stage build
 
 ## Getting started
@@ -53,8 +53,16 @@ docker run -p 5000:8080 shorturl
 Run tests:
 
 ```bash
-dotnet test
+dotnet test ShortUrl.slnx
 ```
+
+## Testing
+
+**22 xUnit tests** across three areas:
+
+- `Generators/` — Base62 code length, alphabet, and argument validation.
+- `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
+- `Integration/` — a `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises `POST /api/urls` → `GET /{code}` (302) → stats (`clickCount = 1`).
 
 ## API reference
 

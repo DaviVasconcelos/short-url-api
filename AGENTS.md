@@ -4,9 +4,9 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 ## Current state
 
-- **Fases 0-4 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete).
-- **Next: Fase 5 — tests (xUnit).** Planned list in `PLAN.md` §Fase 5. Note the service constructor is now `(AppDbContext, ICodeGenerator, IMemoryCache, ShortUrlOptions)`.
-- **Pending:** Fase 5 tests (none exist), Fase 6 Docker + CI (no `Dockerfile` / `.github/workflows` yet), Fase 7 README polish.
+- **Fases 0-5 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green).
+- **Next: Fase 6 — Docker + CI.** No `Dockerfile` / `.github/workflows` yet; see `PLAN.md` §Fase 6 (CI needs SDK 10 for `slnx` + SDK 8 to run `net8.0`).
+- **Pending:** Fase 6 Docker + CI, Fase 7 README polish.
 
 ## Build, test, run
 
@@ -15,7 +15,8 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 - Pin Microsoft packages to `8.0.x` (currently `8.0.31`). `dotnet add package X` without `--version` resolves 10.x and fails with `NU1202`.
 - Run the API: `dotnet run --project src/ShortUrl.Api` → `http://localhost:5000` (Swagger at `/swagger`, health at `/health`).
 - `launchSettings.json` and `ShortUrl:BaseUrl` both use port `5000`; keep them in sync.
-- No tests exist yet — `dotnet test` finds none (planned in `PLAN.md` Fase 5). `src/ShortUrl.Api/ShortUrl.Api.http` has ready-to-run requests for the whole flow.
+- `tests/ShortUrl.Tests` has **22 xUnit tests** across `Generators/`, `Services/`, and `Integration/`. Service tests use `Support/SqliteTestContext` (SQLite in-memory — **not** EF InMemory, since the service uses `ExecuteUpdateAsync`); the integration test uses `Integration/ApiFactory` (`WebApplicationFactory<Program>`). `Program.cs` ends with `public partial class Program;` to expose the entry point.
+- `src/ShortUrl.Api/ShortUrl.Api.http` has ready-to-run requests for the whole flow.
 
 ## EF Core migrations
 
