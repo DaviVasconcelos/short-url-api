@@ -105,11 +105,20 @@ Dependency rule: `Api -> Application -> Infrastructure`, with both `Application`
 
 - **302 (not 301)** for redirects so expiration and click counting keep working (browsers cache 301 aggressively).
 - **Base62 7-char codes** via `RandomNumberGenerator` (~3.5T combos) + UNIQUE index + retry on collision.
-- **IMemoryCache** (5 min TTL) for the redirect path; Redis would be the next step in production.
+- **IMemoryCache** (5 min TTL, `ShortUrl.CacheTtlSeconds`) for the redirect path. Cache-aside stores only `originalUrl` + `expiresAt` (never `clickCount`), and the click increment stays in the database via `ExecuteUpdateAsync`, so the hot `SELECT` is what gets skipped. Redis would be the next step in production.
 - **SQLite** for zero-setup local dev; EF Core makes switching to SQL Server a connection-string change.
 - **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
 - **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
 - **`/health`** checks the SQLite context (`AddDbContextCheck`) so orchestrators can probe readiness.
+
+### Cache in practice
+
+With EF command logging enabled (`Microsoft.EntityFrameworkCore.Database.Command: Information` in `appsettings.Development.json`), two consecutive `GET /{code}` requests produced:
+
+- **Without cache** (baseline): 2 `SELECT` + 2 `UPDATE`.
+- **With cache**: 1 `SELECT` + 2 `UPDATE` — the second redirect is served from memory; only the click counter still touches the database.
+
+Behavior is unchanged: both requests return `302` and the stats endpoint reports `clickCount = 2`.
 
 ## Configuration
 
@@ -118,7 +127,7 @@ Dependency rule: `Api -> Application -> Infrastructure`, with both `Application`
 ```json
 {
   "ConnectionStrings": { "Default": "Data Source=shorturl.db" },
-  "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30 }
+  "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 }
 }
 ```
 

@@ -4,8 +4,8 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 ## Current state
 
-- **Fases 0-3 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs.
-- **Next: Fase 4 — Cache (`IMemoryCache`).** The agreed design lives in `PLAN.md` §Fase 4 / §2.4 — follow it instead of re-deciding.
+- **Fases 0-4 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete).
+- **Next: Fase 5 — tests (xUnit).** Planned list in `PLAN.md` §Fase 5. Note the service constructor is now `(AppDbContext, ICodeGenerator, IMemoryCache, ShortUrlOptions)`.
 - **Pending:** Fase 5 tests (none exist), Fase 6 Docker + CI (no `Dockerfile` / `.github/workflows` yet), Fase 7 README polish.
 
 ## Build, test, run
