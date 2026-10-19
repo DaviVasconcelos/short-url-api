@@ -3,6 +3,8 @@
 > Foco: REST bem feito + EF Core + Cache + Docker + Testes.
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
+>
+> **Status (2026-10-19):** Fases 0-7 concluídas. As seções 1-11 são o plano histórico. O plano ativo de evolução está na seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -274,3 +276,94 @@ Content-Type: application/json
 3. Rate Limiting .NET 8: `builder.Services.AddRateLimiter(...)` + `[EnableRateLimiting]`
 4. `RandomNumberGenerator.GetString()` — aceita alfabeto custom (perfeito p/ Base62)
 5. `WebApplicationFactory` para teste de integração (1 teste basta)
+
+## 12. Plano v2 — Evolução para portfólio (custo zero)
+
+> Aprovado em 2026-10-19. As seções 1-11 permanecem como registro histórico das Fases 0-7. Esta seção substitui o roadmap antigo para a próxima etapa.
+
+### 12.1 Decisões travadas
+
+- **Deploy:** Render Free Web Service + Neon Free Postgres + Render Key Value Free. Custo **$0** e sem cartão de crédito.
+- **Banco local/testes:** SQLite (mantém a suíte rápida e sem dependência externa).
+- **Banco de produção:** PostgreSQL (Neon).
+- **SQL Server:** adiado para a Fase 8 **opcional/local**, fora do deploy público.
+- **Fly.io:** descartado.
+- **Auth:** JWT + ownership. Criação anônima continua; link autenticado ganha dono; `DELETE` exige o dono.
+- **Links anônimos:** não podem ser deletados pela API (`403`).
+- **Stats (`GET /api/urls/{code}`):** continuam públicos.
+- **Listagem (`GET /api/urls`):** exige autenticação e retorna apenas os links do usuário.
+- **Cache:** interface `IShortUrlCache` no Domain; Redis em produção; fallback para memória.
+- **Migrations:** SQLite em `ShortUrl.Infrastructure`; PostgreSQL em projeto separado.
+- **Documentação:** README/AGENTS atualizados ao fim de cada macrofase; consolidação na Fase 7.
+
+### 12.2 Macrofases e entregas
+
+| Macro | Entrega | Aceite | Depende |
+|---|---|---|---|
+| **0. Baseline** | **0a** Branch + suíte atual | `feat/roadmap-v2` criada; 22/22 testes verdes | — |
+| **1. PostgreSQL** | **1a** Provider + projeto de migrations + `InitialPostgres` | API sobe com `Database:Provider=Postgres` e aplica migration | 0a |
+|  | **1b** Compose local + job Postgres na CI + tool manifest | `dotnet ef database update` verde na CI | 1a |
+| **2. Cache seam** | **2a** `IShortUrlCache` + `CachedShortUrl` + `DistributedShortUrlCache` | Cache abstrato compila e é resolvido pela DI | 0a |
+|  | **2b** `ShortUrlService` + testes com cache abstrato | 22 testes verdes; redirect continua funcionando | 2a |
+| **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
+|  | **3b** register/login/me + JWT + 401/403 | Fluxo de login e `me` funcionando; Swagger com Bearer | 3a |
+|  | **3c** Ownership no create/delete + política de anônimos | Dono deleta; não-dono e anônimo recebem `403` | 3b |
+|  | **3d** `GET /api/urls` paginado | Lista só links do usuário com `page`/`pageSize` validados | 3c |
+|  | **3e** Hardening | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
+| **4. Deploy** | **4a** Container readiness | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
+|  | **4b** Render + Neon + Key Value | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
+| **5. Redis** | **5a** DI + fallback | Redis configurado via host/porta; falha cai para o banco | 2a |
+|  | **5b** Health check + compose + testes | `/health` cobre Redis; cache distribuído validado | 5a |
+| **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | Apaga só expirados, em lotes, de forma idempotente | 1a |
+|  | **6b** `BackgroundService` + testes | Job roda no intervalo configurado e pode ser desligado em testes | 6a |
+| **7. Docs** | **7a** README/AGENTS/PLAN + ADRs + screenshot | Docs sincronizados com o código; roadmap atualizado | todas |
+| **8. SQL Server** | **8a** Compose + migrations locais | Provider SQL Server funciona localmente; sem deploy | 1a |
+
+### 12.3 Ordem de execução
+
+```text
+0a → 1a → 1b → 2a → 2b → 3a → 3b → 3c → 3d → 3e → 4a → 4b → 5a → 5b → 6a → 6b → 7a
+```
+
+- **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
+- Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.
+- Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
+- A Key Value pode ser criada no blueprint em 4b, mas só passa a ser usada em 5a.
+
+### 12.4 Critérios por entrega
+
+- Build e testes verdes antes de cada commit.
+- Commits em Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
+- Nenhum secret versionado (`Jwt:Key`, connection strings e senhas ficam em env/secrets).
+- README/AGENTS atualizados ao fim de cada macrofase, não apenas na Fase 7.
+- Deploy só é considerado pronto após validar `/health`, Swagger, register/login, create, redirect e delete.
+
+### 12.5 Configuração de produção
+
+- **Neon:** usar connection string direta, sem `-pooler`, para migrations:
+  ```text
+  Host=...neon.tech;Database=neondb;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true;Maximum Pool Size=20;Timeout=30
+  ```
+- **Render:** web service Docker Free, região `virginia`, `healthCheckPath: /health/live`, `autoDeployTrigger: checksPass`.
+- **Render Key Value:** Free, `ipAllowList: []` (somente rede interna), `persistenceMode: off`.
+- **Secrets no Render:** `ConnectionStrings__Postgres` com `sync: false`; `Jwt__Key` com `generateValue: true`.
+- **Redis no Render:** `Redis__Host` e `Redis__Port` via `fromService`.
+- **Primeiro acesso após idle:** cold start de ~1 min; não usar keep-alive, pois consumiria as 750 h/mês.
+
+### 12.6 Fora de escopo
+
+- Refresh tokens, roles/admin, reset de senha e verificação de e-mail.
+- Frontend, analytics além de `ClickCount` e multi-tenancy.
+- SQL Server em produção.
+- Escala horizontal e múltiplas instâncias no Render Free.
+
+### 12.7 Definição de pronto do roadmap v2
+
+- [ ] PostgreSQL em produção (Neon) com migrations separadas.
+- [ ] Auth JWT + ownership + listagem paginada.
+- [ ] Redis com fallback e health check.
+- [ ] Cleanup automático de expirados.
+- [ ] Deploy público no Render Free funcionando.
+- [ ] README/AGENTS/PLAN/ADRs sincronizados.
+- [ ] CI verde, incluindo o job Postgres.
+- [ ] SQL Server opcional local documentado (ou explicitamente adiado).
