@@ -4,9 +4,9 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 ## Current state
 
-- **Fases 0-5 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green).
-- **Next: Fase 6 — Docker + CI.** No `Dockerfile` / `.github/workflows` yet; see `PLAN.md` §Fase 6 (CI needs SDK 10 for `slnx` + SDK 8 to run `net8.0`).
-- **Pending:** Fase 6 Docker + CI, Fase 7 README polish.
+- **Fases 0-6 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green); **multi-stage `Dockerfile`** (build `sdk:8.0` → runtime `aspnet:8.0`, listens on 8080) and **`.github/workflows/ci.yml`** (restore/build/test + a `docker build` job). Migrations auto-apply on startup (`Program.cs` `MigrateDatabase`, 5 attempts).
+- **Next: Fase 7 — README polish** (Swagger screenshot, 3-command run, decisions). See `PLAN.md` §Fase 7.
+- **Pending:** Fase 7 only.
 
 ## Build, test, run
 
@@ -22,7 +22,7 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 - `AppDbContext` is in `src/ShortUrl.Infrastructure/Persistence`; migrations sit in `Persistence/Migrations`.
 - Add: `dotnet ef migrations add <Name> --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api --output-dir Persistence/Migrations`
-- Apply: same command with `database update` instead of `migrations add` (creates `shorturl.db`, gitignored).
+- Apply: same command with `database update` instead of `migrations add` (creates `shorturl.db`, gitignored). **Migrations also auto-apply on app startup** (`MigrateDatabase` in `Program.cs`), so Docker/deploy needs no manual step.
 - `Microsoft.EntityFrameworkCore.Design` lives in the Api (startup) project.
 
 ## Architecture — dependency direction is inverted from the norm
@@ -31,12 +31,13 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 - Edges: `Api -> Application -> Infrastructure`, plus `Application -> Domain` and `Infrastructure -> Domain`.
 - **`Application` references `Infrastructure`, not the reverse.** `Infrastructure` must never reference `Application`. Any interface that `Infrastructure` implements must live in `ShortUrl.Domain` (e.g. `ICodeGenerator` is in `Domain/Abstractions`, not `Application`).
 - DI wiring happens only in `src/ShortUrl.Api/Program.cs`. Controllers (`src/ShortUrl.Api/Controllers`) consume `IShortUrlService`, never `AppDbContext`.
-- `ShortUrlService` (in `Application`) is the one place that touches `AppDbContext` and `ICodeGenerator`. Its constructor is the DI seam: Fase 4 adds `IMemoryCache` there.
+- `ShortUrlService` (in `Application`) is the one place that touches `AppDbContext` and `ICodeGenerator`. Its DI seam is the constructor `(AppDbContext, ICodeGenerator, IMemoryCache, ShortUrlOptions)`.
 
 ## Gotchas
 
 - Root namespace is `ShortUrl` and the domain entity is also `ShortUrl`, so unqualified `ShortUrl` is ambiguous. Follow the existing aliases: `using Domain = ShortUrl.Domain;` and `using ShortUrlEntity = ShortUrl.Domain.ShortUrl;`.
-- Reality vs. docs: controllers/endpoints now exist (Fase 3), but no `Dockerfile` / `.github/workflows`, and no tests. The README CI badge points at a workflow that does not exist.
+- `infrastructure` vs docs are now aligned: Dockerfile + CI exist. If the README CI badge is red, check the workflow runs, not the docs.
+- Docker: build stage uses `sdk:8.0` and `.dockerignore` **excludes `global.json`** (SDK 8 can't satisfy its `10.0.401` pin; publishing a single project doesn't read `.slnx`, so SDK 8 is enough). CI still needs SDK 10 to parse `ShortUrl.slnx`.
 - `ShortUrlOptions` is a singleton POCO bound via `Configuration.GetSection("ShortUrl")`, not `IOptions<T>`.
 - Rate limiting: policy name `"create-url"` (fixed window, 30/min per IP), applied via `[EnableRateLimiting("create-url")]` on `UrlsController.Create`. `OnRejected` returns `429` + `Retry-After`.
 - Reserved aliases rejected on create (case-insensitive): `api`, `urls`, `health`, `swagger`, `favicon.ico`. Keep this list in sync with new root routes.

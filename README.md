@@ -43,12 +43,17 @@ dotnet run --project src/ShortUrl.Api
 
 Open Swagger: http://localhost:5000/swagger
 
-With Docker:
+With Docker (EF migrations are applied automatically on startup):
 
 ```bash
 docker build -t shorturl .
 docker run -p 5000:8080 shorturl
+
+# override the public base URL used in generated short links
+docker run -p 5000:8080 -e ShortUrl__BaseUrl=https://your-domain shorturl
 ```
+
+The container listens on `8080`; map it to any host port. The SQLite database lives inside the container, so mount a volume (`-v shorturl-data:/app`) to persist it.
 
 Run tests:
 
@@ -98,13 +103,16 @@ Error codes: `400` invalid URL, `404` not found, `409` alias in use, `410` expir
 ```
 ShortUrl.slnx               # Solution (new XML format, SDK 10 / VS 2022 17.12+)
 global.json                # Pins .NET 10 SDK for tooling; runtime stays net8.0
+Dockerfile                 # Multi-stage build (sdk:8.0 -> aspnet:8.0)
+.dockerignore
+.github/workflows/ci.yml   # restore -> build -> test (+ docker build)
 src/
   ShortUrl.Domain/         # ShortUrl entity + ICodeGenerator port (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
   ShortUrl.Application/    # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
   ShortUrl.Infrastructure/ # AppDbContext, EF configs, Base62CodeGenerator adapter
 tests/
-  ShortUrl.Tests/          # Unit + 1 integration test
+  ShortUrl.Tests/          # 22 xUnit tests (generators, service, integration)
 ```
 
 Dependency rule: `Api -> Application -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
@@ -118,6 +126,7 @@ Dependency rule: `Api -> Application -> Infrastructure`, with both `Application`
 - **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
 - **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
 - **`/health`** checks the SQLite context (`AddDbContextCheck`) so orchestrators can probe readiness.
+- **Migrations run on startup** (with retry), so `docker run` and future deploys need no manual `dotnet ef database update`.
 
 ### Cache in practice
 
