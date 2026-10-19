@@ -25,7 +25,7 @@ Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Co
 
 - **.NET 8 / ASP.NET Core** (Controllers) — `net8.0` em todos os `.csproj`
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution no formato novo)
-- **EF Core + SQLite** (troca para SQL Server via connection string)
+- **EF Core + SQLite** para dev local/testes (PostgreSQL em produção)
 - **IMemoryCache**, **Rate Limiting** (nativo do .NET 8)
 - **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** para o teste de integração
 - **Docker** com build multi-stage
@@ -143,8 +143,8 @@ graph LR
 
 - **302 (não 301)** nos redirects para que expiração e contagem de cliques continuem funcionando (navegadores cacheiam 301 agressivamente).
 - **Códigos Base62 de 7 chars** via `RandomNumberGenerator` (~3,5T combinações) + índice UNIQUE + retry em colisão.
-- **IMemoryCache** (TTL de 5 min, `ShortUrl.CacheTtlSeconds`) no caminho de redirect. O cache-aside guarda apenas `originalUrl` + `expiresAt` (nunca `clickCount`), e o incremento de clique continua no banco via `ExecuteUpdateAsync`, então o `SELECT` quente é o que deixa de acontecer. Redis seria o próximo passo em produção.
-- **SQLite** para dev local sem setup; o EF Core torna a troca para SQL Server uma mudança de connection string.
+- **IMemoryCache** (TTL de 5 min, `ShortUrl.CacheTtlSeconds`) no caminho de redirect. O cache-aside guarda apenas `originalUrl` + `expiresAt` (nunca `clickCount`), e o incremento de clique continua no banco via `ExecuteUpdateAsync`, então o `SELECT` quente é o que deixa de acontecer. Redis fica como stretch goal para cache distribuído.
+- **SQLite** para dev local sem setup e testes; PostgreSQL é o provider de produção.
 - **Rate limiting de janela fixa** (30 req/min/IP no POST) para evitar abuso, retornando `429` com `Retry-After`.
 - **Aliases reservados** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) são rejeitados para não sombrear rotas do app.
 - **`/health`** verifica o contexto SQLite (`AddDbContextCheck`) para orquestradores checarem readiness.
@@ -174,12 +174,19 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
 
 Veja `PLAN.md` §12 para a divisão detalhada das fases.
 
+**Escopo ativo**
 - [ ] Provider PostgreSQL + migrations (produção)
-- [ ] Auth JWT + links por usuário
+- [ ] Auth JWT + links por usuário + listagem paginada
+- [ ] Deploy de demo pública (Render Free + Neon)
+- [ ] Documentação, testes e runbook de deploy
+
+**Stretch**
 - [ ] Cache distribuído com Redis
 - [ ] BackgroundService para limpar links expirados
-- [ ] Deploy de demo pública (Render Free + Neon)
-- [ ] Opcional: exemplo local com SQL Server
+- [ ] Rate limiting por usuário
+
+**Cortado**
+- Exemplo local com SQL Server (redundante com PostgreSQL)
 
 ## Licença
 

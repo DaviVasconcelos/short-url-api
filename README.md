@@ -25,7 +25,7 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 
 - **.NET 8 / ASP.NET Core** (Controllers) — `net8.0` em todos os `.csproj`
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution formato novo)
-- **EF Core + SQLite** (swap to SQL Server via connection string)
+- **EF Core + SQLite** for local dev/tests (PostgreSQL for production)
 - **IMemoryCache**, **Rate Limiting** (built-in .NET 8)
 - **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration test
 - **Docker** multi-stage build
@@ -143,8 +143,8 @@ graph LR
 
 - **302 (not 301)** for redirects so expiration and click counting keep working (browsers cache 301 aggressively).
 - **Base62 7-char codes** via `RandomNumberGenerator` (~3.5T combos) + UNIQUE index + retry on collision.
-- **IMemoryCache** (5 min TTL, `ShortUrl.CacheTtlSeconds`) for the redirect path. Cache-aside stores only `originalUrl` + `expiresAt` (never `clickCount`), and the click increment stays in the database via `ExecuteUpdateAsync`, so the hot `SELECT` is what gets skipped. Redis would be the next step in production.
-- **SQLite** for zero-setup local dev; EF Core makes switching to SQL Server a connection-string change.
+- **IMemoryCache** (5 min TTL, `ShortUrl.CacheTtlSeconds`) for the redirect path. Cache-aside stores only `originalUrl` + `expiresAt` (never `clickCount`), and the click increment stays in the database via `ExecuteUpdateAsync`, so the hot `SELECT` is what gets skipped. Redis remains a stretch goal for distributed caching.
+- **SQLite** for zero-setup local dev and tests; PostgreSQL is the production provider.
 - **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
 - **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
 - **`/health`** checks the SQLite context (`AddDbContextCheck`) so orchestrators can probe readiness.
@@ -174,12 +174,19 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
 
 See `PLAN.md` §12 for the detailed phase breakdown.
 
+**Active scope**
 - [ ] PostgreSQL provider + migrations (production)
-- [ ] JWT auth + per-user ownership
+- [ ] JWT auth + per-user ownership + paginated list
+- [ ] Public demo deploy (Render Free + Neon)
+- [ ] Docs, tests, and deploy runbook
+
+**Stretch**
 - [ ] Redis distributed cache
 - [ ] BackgroundService to purge expired links
-- [ ] Public demo deploy (Render Free + Neon)
-- [ ] Optional: SQL Server local sample
+- [ ] Per-user rate limiting
+
+**Cut**
+- SQL Server local sample (redundant with PostgreSQL)
 
 ## License
 
