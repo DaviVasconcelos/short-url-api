@@ -172,11 +172,14 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
 
 ## Roadmap
 
-- [ ] Auth JWT + links por usuário (próximo projeto de portfólio)
+Veja `PLAN.md` §12 para a divisão detalhada das fases.
+
+- [ ] Provider PostgreSQL + migrations (produção)
+- [ ] Auth JWT + links por usuário
 - [ ] Cache distribuído com Redis
 - [ ] BackgroundService para limpar links expirados
-- [ ] Exemplo de connection string para SQL Server
-- [ ] Deploy de demo pública (Fly.io / Render)
+- [ ] Deploy de demo pública (Render Free + Neon)
+- [ ] Opcional: exemplo local com SQL Server
 
 ## Licença
 

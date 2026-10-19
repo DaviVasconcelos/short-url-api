@@ -172,11 +172,14 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
 
 ## Roadmap
 
-- [ ] JWT auth + per-user links (next portfolio project)
+See `PLAN.md` §12 for the detailed phase breakdown.
+
+- [ ] PostgreSQL provider + migrations (production)
+- [ ] JWT auth + per-user ownership
 - [ ] Redis distributed cache
 - [ ] BackgroundService to purge expired links
-- [ ] SQL Server sample connection string
-- [ ] Public demo deploy (Fly.io / Render)
+- [ ] Public demo deploy (Render Free + Neon)
+- [ ] Optional: SQL Server local sample
 
 ## License
 
