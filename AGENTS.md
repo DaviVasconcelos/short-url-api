@@ -38,6 +38,7 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 - Root namespace is `ShortUrl` and the domain entity is also `ShortUrl`, so unqualified `ShortUrl` is ambiguous. Follow the existing aliases: `using Domain = ShortUrl.Domain;` and `using ShortUrlEntity = ShortUrl.Domain.ShortUrl;`.
 - `infrastructure` vs docs are now aligned: Dockerfile + CI exist. If the README CI badge is red, check the workflow runs, not the docs.
 - Docker: build stage uses `sdk:8.0` and `.dockerignore` **excludes `global.json`** (SDK 8 can't satisfy its `10.0.401` pin; publishing a single project doesn't read `.slnx`, so SDK 8 is enough). CI still needs SDK 10 to parse `ShortUrl.slnx`.
+- **Do NOT add `Microsoft.AspNetCore.OpenApi` back to `ShortUrl.Api`.** It forces `Microsoft.OpenApi` to `1.6.30`, whose `openapi: "3.0.4"` output makes the swagger-ui bundled in `Swashbuckle.AspNetCore 6.6.2` fail with *"does not specify a valid version field"*. Removing it resolves `Microsoft.OpenApi 1.6.14` (compatible); `AddEndpointsApiExplorer` comes from the shared framework, so the package was never needed.
 - `ShortUrlOptions` is a singleton POCO bound via `Configuration.GetSection("ShortUrl")`, not `IOptions<T>`.
 - Rate limiting: policy name `"create-url"` (fixed window, 30/min per IP), applied via `[EnableRateLimiting("create-url")]` on `UrlsController.Create`. `OnRejected` returns `429` + `Retry-After`.
 - Reserved aliases rejected on create (case-insensitive): `api`, `urls`, `health`, `swagger`, `favicon.ico`. Keep this list in sync with new root routes.
