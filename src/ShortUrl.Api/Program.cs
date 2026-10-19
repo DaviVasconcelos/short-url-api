@@ -74,6 +74,12 @@ builder.Services
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    MigrateDatabase(db);
+}
+
 app.UseExceptionHandler();
 app.UseRateLimiter();
 
@@ -87,5 +93,23 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+static void MigrateDatabase(AppDbContext db)
+{
+    const int maxAttempts = 5;
+
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            db.Database.Migrate();
+            return;
+        }
+        catch (Exception) when (attempt < maxAttempts)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+        }
+    }
+}
 
 public partial class Program;
