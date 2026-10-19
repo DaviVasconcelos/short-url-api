@@ -1,12 +1,11 @@
 # AGENTS.md
 
-Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio project. Everything here is verified against the current tree. Note that `README.md` and `PLAN.md` describe more than exists yet.
+Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio project. Everything here is verified against the current tree. The project is feature-complete: `README.md` matches the code, and `PLAN.md` is the historical build plan.
 
 ## Current state
 
-- **Fases 0-6 done.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green); **multi-stage `Dockerfile`** (build `sdk:8.0` → runtime `aspnet:8.0`, listens on 8080) and **`.github/workflows/ci.yml`** (restore/build/test + a `docker build` job). Migrations auto-apply on startup (`Program.cs` `MigrateDatabase`, 5 attempts).
-- **Next: Fase 7 — README polish** (Swagger screenshot, 3-command run, decisions). See `PLAN.md` §Fase 7.
-- **Pending:** Fase 7 only.
+- **Fases 0-7 done — feature-complete.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green); **multi-stage `Dockerfile`** (build `sdk:8.0` → runtime `aspnet:8.0`, listens on 8080) and **`.github/workflows/ci.yml`** (restore/build/test + a `docker build` job). Migrations auto-apply on startup (`Program.cs` `MigrateDatabase`, 5 attempts). README polished: 3-command quickstart, Swagger screenshot (`docs/images/swagger.png`), Mermaid dependency graph.
+- **Pending:** nothing on the plan. Future work is the roadmap in `README.md` (deploy, Redis, auth, background cleanup).
 
 ## Build, test, run
 

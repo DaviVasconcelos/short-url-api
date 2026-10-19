@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
+![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
@@ -36,12 +37,23 @@ Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download) (for `slnx` 
 ```bash
 git clone https://github.com/DaviVasconcelos/short-url-api
 cd short-url-api
-dotnet restore ShortUrl.slnx
-dotnet ef database update --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api
 dotnet run --project src/ShortUrl.Api
 ```
 
-Open Swagger: http://localhost:5000/swagger
+That's it: `dotnet run` restores packages, applies EF migrations on startup, and serves the API at `http://localhost:5000` (Swagger at `/swagger`). Try it:
+
+```bash
+# 1. shorten a URL -> 201 Created + shortCode
+curl -X POST http://localhost:5000/api/urls \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://dotnet.microsoft.com/en-us/learn","expiresInDays":30}'
+
+# 2. follow the redirect (302) and read the stats
+curl -i http://localhost:5000/<shortCode>
+curl http://localhost:5000/api/urls/<shortCode>
+```
+
+![Swagger UI](docs/images/swagger.png)
 
 With Docker (EF migrations are applied automatically on startup):
 
@@ -106,6 +118,7 @@ global.json                # Pins .NET 10 SDK for tooling; runtime stays net8.0
 Dockerfile                 # Multi-stage build (sdk:8.0 -> aspnet:8.0)
 .dockerignore
 .github/workflows/ci.yml   # restore -> build -> test (+ docker build)
+docs/images/swagger.png    # Swagger UI screenshot used below
 src/
   ShortUrl.Domain/         # ShortUrl entity + ICodeGenerator port (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
@@ -116,6 +129,15 @@ tests/
 ```
 
 Dependency rule: `Api -> Application -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
+
+```mermaid
+graph LR
+  Api[ShortUrl.Api] --> Application[ShortUrl.Application]
+  Api --> Infrastructure[ShortUrl.Infrastructure]
+  Application --> Infrastructure
+  Application --> Domain[ShortUrl.Domain]
+  Infrastructure --> Domain
+```
 
 ## Technical decisions
 
@@ -158,4 +180,4 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
 
 ## License
 
-MIT — feel free to use as a template.
+MIT — see [LICENSE](LICENSE). Feel free to use as a template.
