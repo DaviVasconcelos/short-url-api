@@ -1,5 +1,7 @@
 # Short URL API
 
+**English** · [Português](README.pt-BR.md)
+
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
 ![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)
@@ -7,9 +9,7 @@
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
 
-> 🇧🇷 PT-BR: API de encurtador de URLs feito com .NET 8. Veja o plano de desenvolvimento em `PLAN.md`.
->
-> **SDK vs runtime:** tooling usa **.NET 10 SDK + solution `ShortUrl.slnx`** (requer VS 2022 17.12+), mas o código roda em **.NET 8 LTS** (`<TargetFramework>net8.0</TargetFramework>` em todos os projetos).
+> **SDK vs runtime:** tooling uses **.NET 10 SDK + `ShortUrl.slnx`** (requires VS 2022 17.12+), but the code runs on **.NET 8 LTS** (`<TargetFramework>net8.0</TargetFramework>` in every project).
 
 ## Features
 
@@ -118,7 +118,7 @@ global.json                # Pins .NET 10 SDK for tooling; runtime stays net8.0
 Dockerfile                 # Multi-stage build (sdk:8.0 -> aspnet:8.0)
 .dockerignore
 .github/workflows/ci.yml   # restore -> build -> test (+ docker build)
-docs/images/swagger.png    # Swagger UI screenshot used below
+docs/images/swagger.png    # Swagger UI screenshot used in this README
 src/
   ShortUrl.Domain/         # ShortUrl entity + ICodeGenerator port (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
