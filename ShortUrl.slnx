@@ -3,6 +3,7 @@
     <Project Path="src/ShortUrl.Api/ShortUrl.Api.csproj" />
     <Project Path="src/ShortUrl.Application/ShortUrl.Application.csproj" />
     <Project Path="src/ShortUrl.Domain/ShortUrl.Domain.csproj" />
+    <Project Path="src/ShortUrl.Infrastructure.Postgres/ShortUrl.Infrastructure.Postgres.csproj" />
     <Project Path="src/ShortUrl.Infrastructure/ShortUrl.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">

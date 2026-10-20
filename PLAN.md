@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-19):** Fases 0-7 concluídas. As seções 1-11 são o plano histórico. O plano ativo é o **corte enxuto** da seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
+> **Status (2026-10-20):** Fases 0-7 concluídas e corte enxuto em andamento — **0a e 1a concluídas** (23 testes verdes; provider PostgreSQL com migrations separadas). Próxima entrega: **3a**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -302,7 +302,7 @@ Content-Type: application/json
 | Macro | Entrega | Status | Aceite | Depende |
 |---|---|---|---|---|
 | **0. Baseline** | **0a** Branch + suíte atual | **Feito** | `feat/roadmap-v2` criada; 22/22 testes verdes | — |
-| **1. PostgreSQL** | **1a** Provider + projeto de migrations + `InitialPostgres` | **Ativo** | API sobe com `Database:Provider=Postgres` e aplica migration | 0a |
+| **1. PostgreSQL** | **1a** Provider + projeto de migrations + `InitialPostgres` | **Feito** | API sobe com `Database:Provider=Postgres` e aplica migration | 0a |
 |  | **1b** Compose local + job Postgres na CI + tool manifest | **Opcional rápido** | `dotnet ef database update` verde na CI | 1a |
 | **2. Cache seam** | **2a** `IShortUrlCache` + `CachedShortUrl` + `DistributedShortUrlCache` | **Stretch** | Cache abstrato compila e é resolvido pela DI | 0a |
 |  | **2b** `ShortUrlService` + testes com cache abstrato | **Stretch** | 22 testes verdes; redirect continua funcionando | 2a |
@@ -326,6 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
+- **0a e 1a concluídas em 2026-10-20.** A ordem restante começa em **3a**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
 - Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.
@@ -373,6 +374,6 @@ Content-Type: application/json
 
 ### 12.8 Fluxo de trabalho
 
-- O PR da branch `feat/roadmap-v2` será mergeado pelo autor.
-- Depois do merge, o desenvolvimento continua **diretamente na `main`**, sem novas branches por fase.
+- O PR #1 (`feat/roadmap-v2`) foi mergeado pelo autor.
+- O desenvolvimento continua **diretamente na `main`**, sem novas branches por fase.
 - Commits seguem Conventional Commits e cada entrega mantém build/testes verdes.

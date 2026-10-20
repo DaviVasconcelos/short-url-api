@@ -10,6 +10,11 @@ public class AppDbContext : DbContext
     {
     }
 
+    protected AppDbContext(DbContextOptions options)
+        : base(options)
+    {
+    }
+
     public DbSet<Domain.ShortUrl> ShortUrls => Set<Domain.ShortUrl>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

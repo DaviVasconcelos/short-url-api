@@ -7,12 +7,37 @@ using ShortUrl.Application.Options;
 using ShortUrl.Application.Services;
 using ShortUrl.Domain.Abstractions;
 using ShortUrl.Infrastructure.Persistence;
+using ShortUrl.Infrastructure.Postgres.Persistence;
 using ShortUrl.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
+
+switch (databaseProvider.ToLowerInvariant())
+{
+    case "sqlite":
+        builder.Services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+        break;
+
+    case "postgres":
+        var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres");
+
+        if (string.IsNullOrWhiteSpace(postgresConnectionString))
+        {
+            throw new InvalidOperationException(
+                "ConnectionStrings:Postgres must be configured when Database:Provider is Postgres.");
+        }
+
+        builder.Services.AddDbContext<AppDbContext, PostgresAppDbContext>(options =>
+            options.UseNpgsql(postgresConnectionString));
+        break;
+
+    default:
+        throw new InvalidOperationException(
+            $"Unsupported database provider '{databaseProvider}'. Use 'Sqlite' or 'Postgres'.");
+}
 
 var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlOptions>()
     ?? new ShortUrlOptions();

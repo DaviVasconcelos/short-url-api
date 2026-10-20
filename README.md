@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
@@ -25,7 +25,7 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 
 - **.NET 8 / ASP.NET Core** (Controllers) — `net8.0` em todos os `.csproj`
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution formato novo)
-- **EF Core + SQLite** for local dev/tests (PostgreSQL for production)
+- **EF Core + SQLite** for local dev/tests and **PostgreSQL** for production, each with its own migrations
 - **IMemoryCache**, **Rate Limiting** (built-in .NET 8)
 - **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration test
 - **Docker** multi-stage build
@@ -75,11 +75,12 @@ dotnet test ShortUrl.slnx
 
 ## Testing
 
-**22 xUnit tests** across three areas:
+**23 xUnit tests** across four areas:
 
 - `Generators/` — Base62 code length, alphabet, and argument validation.
 - `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
 - `Integration/` — a `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises `POST /api/urls` → `GET /{code}` (302) → stats (`clickCount = 1`).
+- `Persistence/` — builds the PostgreSQL model without a database and asserts the generated DDL (table, columns, unique index).
 
 ## API reference
 
@@ -123,17 +124,20 @@ src/
   ShortUrl.Domain/         # ShortUrl entity + ICodeGenerator port (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
   ShortUrl.Application/    # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
-  ShortUrl.Infrastructure/ # AppDbContext, EF configs, Base62CodeGenerator adapter
+  ShortUrl.Infrastructure/ # AppDbContext, SQLite migrations, Base62CodeGenerator adapter
+  ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + InitialPostgres migration
 tests/
-  ShortUrl.Tests/          # 22 xUnit tests (generators, service, integration)
+  ShortUrl.Tests/          # 23 xUnit tests (generators, service, integration, Postgres model)
 ```
 
-Dependency rule: `Api -> Application -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
+Dependency rule: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
 
 ```mermaid
 graph LR
   Api[ShortUrl.Api] --> Application[ShortUrl.Application]
   Api --> Infrastructure[ShortUrl.Infrastructure]
+  Api --> Postgres[ShortUrl.Infrastructure.Postgres]
+  Postgres --> Infrastructure
   Application --> Infrastructure
   Application --> Domain[ShortUrl.Domain]
   Infrastructure --> Domain
@@ -144,10 +148,11 @@ graph LR
 - **302 (not 301)** for redirects so expiration and click counting keep working (browsers cache 301 aggressively).
 - **Base62 7-char codes** via `RandomNumberGenerator` (~3.5T combos) + UNIQUE index + retry on collision.
 - **IMemoryCache** (5 min TTL, `ShortUrl.CacheTtlSeconds`) for the redirect path. Cache-aside stores only `originalUrl` + `expiresAt` (never `clickCount`), and the click increment stays in the database via `ExecuteUpdateAsync`, so the hot `SELECT` is what gets skipped. Redis remains a stretch goal for distributed caching.
-- **SQLite** for zero-setup local dev and tests; PostgreSQL is the production provider.
+- **SQLite** (default) for zero-setup local dev and tests; **PostgreSQL** is opt-in via `Database:Provider=Postgres`. Each provider has its own migrations, so the same model is validated against both.
+- **Provider-agnostic service**: `ShortUrlService` depends only on `AppDbContext`; `AddDbContext<AppDbContext, PostgresAppDbContext>` swaps the implementation.
 - **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
 - **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
-- **`/health`** checks the SQLite context (`AddDbContextCheck`) so orchestrators can probe readiness.
+- **`/health`** checks the configured DbContext (`AddDbContextCheck`) so orchestrators can probe readiness.
 - **Migrations run on startup** (with retry), so `docker run` and future deploys need no manual `dotnet ef database update`.
 
 ### Cache in practice
@@ -165,17 +170,35 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
 
 ```json
 {
-  "ConnectionStrings": { "Default": "Data Source=shorturl.db" },
+  "Database": { "Provider": "Sqlite" },
+  "ConnectionStrings": {
+    "Default": "Data Source=shorturl.db",
+    "Postgres": ""
+  },
   "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 }
 }
 ```
+
+SQLite is the default. To run against PostgreSQL locally:
+
+```bash
+docker run --rm -d --name shorturl-pg \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=shorturl \
+  -p 5432:5432 postgres:16-alpine
+
+export Database__Provider=Postgres
+export ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=shorturl;Username=postgres;Password=postgres"
+dotnet run --project src/ShortUrl.Api
+```
+
+Migrations are applied on startup. Each provider keeps its own history (`InitialCreate` for SQLite, `InitialPostgres` for PostgreSQL); never point one provider at the other's migrations. In production, set `Database__Provider=Postgres` and `ConnectionStrings__Postgres` as environment variables/secrets.
 
 ## Roadmap
 
 See `PLAN.md` §12 for the detailed phase breakdown.
 
 **Active scope**
-- [ ] PostgreSQL provider + migrations (production)
+- [x] PostgreSQL provider + migrations (production)
 - [ ] JWT auth + per-user ownership + paginated list
 - [ ] Public demo deploy (Render Free + Neon)
 - [ ] Docs, tests, and deploy runbook

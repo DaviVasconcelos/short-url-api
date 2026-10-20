@@ -4,33 +4,36 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 ## Current state
 
-- **Fases 0-7 done — feature-complete.** Solution (`ShortUrl.slnx`) + 4 projects; EF Core + SQLite with `InitialCreate` migration; Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **22 xUnit tests** (generator, service, and a `WebApplicationFactory` integration test — all green); **multi-stage `Dockerfile`** (build `sdk:8.0` → runtime `aspnet:8.0`, listens on 8080) and **`.github/workflows/ci.yml`** (restore/build/test + a `docker build` job). Migrations auto-apply on startup (`Program.cs` `MigrateDatabase`, 5 attempts). README polished: 3-command quickstart, Swagger screenshot (`docs/images/swagger.png`), Mermaid dependency graph. `README.md` (English) and `README.pt-BR.md` (Portuguese) are kept in sync and cross-link at the top.
-- **Pending:** roadmap v2 **corte enxuto** active — see `PLAN.md` §12. Fase 0 concluída na branch `feat/roadmap-v2` (22 testes verdes). Próxima entrega: **1a** (PostgreSQL provider + projeto de migrations). Redis/cleanup são stretch; SQL Server foi cortado. Depois do merge do PR, trabalhar somente na `main`.
+- **Fases 0-7 done — feature-complete.** Solution (`ShortUrl.slnx`) + 5 projects; EF Core + SQLite (`InitialCreate`) plus PostgreSQL (`InitialPostgres` in `ShortUrl.Infrastructure.Postgres`); Base62 `ICodeGenerator`; `ShortUrlService` (create / redirect / stats / delete); controllers (`UrlsController` = `POST`+`GET` stats+`DELETE` on `api/urls`, `RedirectController` = `GET /{code}` → 302); rate limiting; health checks; Swagger with XML docs; **`IMemoryCache` cache-aside on the redirect path** (`ShortUrl.CacheTtlSeconds`, default 300; caches only `originalUrl` + `expiresAt`, click increment via `ExecuteUpdateAsync`, invalidated on delete); **23 xUnit tests** (generator, service, integration, and a provider-agnostic Postgres model test — all green); **multi-stage `Dockerfile`** (build `sdk:8.0` → runtime `aspnet:8.0`, listens on 8080) and **`.github/workflows/ci.yml`** (restore/build/test + a `docker build` job). Migrations auto-apply on startup (`Program.cs` `MigrateDatabase`, 5 attempts). README polished: 3-command quickstart, Swagger screenshot (`docs/images/swagger.png`), Mermaid dependency graph. `README.md` (English) and `README.pt-BR.md` (Portuguese) are kept in sync and cross-link at the top.
+- **Pending:** roadmap v2 **corte enxuto** active — see `PLAN.md` §12. Fase 1a concluída na `main` (23 testes verdes; provider PostgreSQL com migrations separadas). Próxima entrega: **3a** (`User` + `OwnerId` + migration nos dois providers). Redis/cleanup são stretch; SQL Server foi cortado.
 
 ## Build, test, run
 
 - Solution is `ShortUrl.slnx` (new XML format, not `.sln`). Pass it explicitly: `dotnet build ShortUrl.slnx`, `dotnet test ShortUrl.slnx`.
 - `global.json` pins SDK 10.0.401, but every project targets `net8.0`. Do not change `<TargetFramework>`.
-- Pin Microsoft packages to `8.0.x` (currently `8.0.31`). `dotnet add package X` without `--version` resolves 10.x and fails with `NU1202`.
+- Pin Microsoft packages to `8.0.x` (currently `8.0.31`). `dotnet add package X` without `--version` resolves 10.x and fails with `NU1202`. `Npgsql.EntityFrameworkCore.PostgreSQL` is pinned to `8.0.11`.
 - Run the API: `dotnet run --project src/ShortUrl.Api` → `http://localhost:5000` (Swagger at `/swagger`, health at `/health`).
 - `launchSettings.json` and `ShortUrl:BaseUrl` both use port `5000`; keep them in sync.
-- `tests/ShortUrl.Tests` has **22 xUnit tests** across `Generators/`, `Services/`, and `Integration/`. Service tests use `Support/SqliteTestContext` (SQLite in-memory — **not** EF InMemory, since the service uses `ExecuteUpdateAsync`); the integration test uses `Integration/ApiFactory` (`WebApplicationFactory<Program>`). `Program.cs` ends with `public partial class Program;` to expose the entry point.
+- `tests/ShortUrl.Tests` has **23 xUnit tests** across `Generators/`, `Services/`, `Integration/`, and `Persistence/`. Service tests use `Support/SqliteTestContext` (SQLite in-memory — **not** EF InMemory, since the service uses `ExecuteUpdateAsync`); the integration test uses `Integration/ApiFactory` (`WebApplicationFactory<Program>`); `Persistence/PostgresModelTests` builds the Postgres model without connecting to a database. `Program.cs` ends with `public partial class Program;` to expose the entry point.
 - `src/ShortUrl.Api/ShortUrl.Api.http` has ready-to-run requests for the whole flow.
 
 ## EF Core migrations
 
-- `AppDbContext` is in `src/ShortUrl.Infrastructure/Persistence`; migrations sit in `Persistence/Migrations`.
-- Add: `dotnet ef migrations add <Name> --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api --output-dir Persistence/Migrations`
-- Apply: same command with `database update` instead of `migrations add` (creates `shorturl.db`, gitignored). **Migrations also auto-apply on app startup** (`MigrateDatabase` in `Program.cs`), so Docker/deploy needs no manual step.
-- `Microsoft.EntityFrameworkCore.Design` lives in the Api (startup) project.
+- `AppDbContext` is in `src/ShortUrl.Infrastructure/Persistence`; SQLite migrations sit in `Persistence/Migrations` (`InitialCreate`).
+- `PostgresAppDbContext` is in `src/ShortUrl.Infrastructure.Postgres/Persistence`; PostgreSQL migrations sit in that project (`InitialPostgres`). It derives from `AppDbContext` and only changes the provider.
+- Add SQLite: `dotnet ef migrations add <Name> --project src/ShortUrl.Infrastructure --startup-project src/ShortUrl.Api --context AppDbContext --output-dir Persistence/Migrations`
+- Add PostgreSQL: `dotnet ef migrations add <Name> --project src/ShortUrl.Infrastructure.Postgres --startup-project src/ShortUrl.Api --context PostgresAppDbContext --output-dir Persistence/Migrations`
+- **Every model change needs two migrations** (one per provider). Generate both in the same commit.
+- Apply: same commands with `database update` instead of `migrations add` (SQLite creates `shorturl.db`, gitignored). For Postgres, set `Database__Provider=Postgres` and `ConnectionStrings__Postgres` first. **Migrations also auto-apply on app startup** (`MigrateDatabase` in `Program.cs`), so Docker/deploy needs no manual step.
+- `Microsoft.EntityFrameworkCore.Design` lives in the Api (startup) project. `src/ShortUrl.Api/Persistence/PostgresDesignTimeFactory.cs` lets `dotnet ef` target Postgres without a running database (it reads `ConnectionStrings__Postgres` or uses a localhost fallback).
 
 ## Architecture — dependency direction is inverted from the norm
 
-- Projects under `src/`: `ShortUrl.Domain`, `ShortUrl.Application`, `ShortUrl.Infrastructure`, `ShortUrl.Api`.
-- Edges: `Api -> Application -> Infrastructure`, plus `Application -> Domain` and `Infrastructure -> Domain`.
+- Projects under `src/`: `ShortUrl.Domain`, `ShortUrl.Application`, `ShortUrl.Infrastructure`, `ShortUrl.Infrastructure.Postgres`, `ShortUrl.Api`.
+- Edges: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, `Application -> Domain` and `Infrastructure -> Domain`.
 - **`Application` references `Infrastructure`, not the reverse.** `Infrastructure` must never reference `Application`. Any interface that `Infrastructure` implements must live in `ShortUrl.Domain` (e.g. `ICodeGenerator` is in `Domain/Abstractions`, not `Application`).
 - DI wiring happens only in `src/ShortUrl.Api/Program.cs`. Controllers (`src/ShortUrl.Api/Controllers`) consume `IShortUrlService`, never `AppDbContext`.
-- `ShortUrlService` (in `Application`) is the one place that touches `AppDbContext` and `ICodeGenerator`. Its DI seam is the constructor `(AppDbContext, ICodeGenerator, IMemoryCache, ShortUrlOptions)`.
+- `ShortUrlService` (in `Application`) is the one place that touches `AppDbContext` and `ICodeGenerator`. Its DI seam is the constructor `(AppDbContext, ICodeGenerator, IMemoryCache, ShortUrlOptions)`. `AddDbContext<AppDbContext, PostgresAppDbContext>` keeps the service provider-agnostic.
 
 ## Gotchas
 
@@ -39,6 +42,9 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 - Docker: build stage uses `sdk:8.0` and `.dockerignore` **excludes `global.json`** (SDK 8 can't satisfy its `10.0.401` pin; publishing a single project doesn't read `.slnx`, so SDK 8 is enough). CI still needs SDK 10 to parse `ShortUrl.slnx`.
 - **Do NOT add `Microsoft.AspNetCore.OpenApi` back to `ShortUrl.Api`.** It forces `Microsoft.OpenApi` to `1.6.30`, whose `openapi: "3.0.4"` output makes the swagger-ui bundled in `Swashbuckle.AspNetCore 6.6.2` fail with *"does not specify a valid version field"*. Removing it resolves `Microsoft.OpenApi 1.6.14` (compatible); `AddEndpointsApiExplorer` comes from the shared framework, so the package was never needed.
 - `ShortUrlOptions` is a singleton POCO bound via `Configuration.GetSection("ShortUrl")`, not `IOptions<T>`.
+- Database provider is selected by `Database:Provider` (`Sqlite` default, `Postgres` opt-in). Unknown values and Postgres without `ConnectionStrings:Postgres` fail fast in `Program.cs`. In Docker/Render, set `Database__Provider=Postgres` and `ConnectionStrings__Postgres`.
+- Npgsql maps `DateTime` to `timestamp with time zone`; keep `CreatedAt`/`ExpiresAt` in UTC (the service already uses `DateTime.UtcNow`). SQLite migrations and Postgres migrations have independent histories — never point one startup at the other provider's history.
+- The Docker image defaults to SQLite; it only uses Postgres when the provider env vars are supplied.
 - Rate limiting: policy name `"create-url"` (fixed window, 30/min per IP), applied via `[EnableRateLimiting("create-url")]` on `UrlsController.Create`. `OnRejected` returns `429` + `Retry-After`.
 - Reserved aliases rejected on create (case-insensitive): `api`, `urls`, `health`, `swagger`, `favicon.ico`. Keep this list in sync with new root routes.
 - `ShortUrl.Api.csproj` sets `GenerateDocumentationFile` + `<NoWarn>CS1591</NoWarn>`; add XML `<summary>`/`<response>` on new actions (consumed by Swagger via `IncludeXmlComments`).

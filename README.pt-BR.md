@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -25,7 +25,7 @@ Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Co
 
 - **.NET 8 / ASP.NET Core** (Controllers) — `net8.0` em todos os `.csproj`
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution no formato novo)
-- **EF Core + SQLite** para dev local/testes (PostgreSQL em produção)
+- **EF Core + SQLite** para dev local/testes e **PostgreSQL** para produção, cada um com suas próprias migrations
 - **IMemoryCache**, **Rate Limiting** (nativo do .NET 8)
 - **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** para o teste de integração
 - **Docker** com build multi-stage
@@ -75,11 +75,12 @@ dotnet test ShortUrl.slnx
 
 ## Testes
 
-**22 testes xUnit** em três áreas:
+**23 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
 - `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração e not found. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
 - `Integration/` — um `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita `POST /api/urls` → `GET /{code}` (302) → stats (`clickCount = 1`).
+- `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabela, colunas, índice único).
 
 ## Referência da API
 
@@ -123,17 +124,20 @@ src/
   ShortUrl.Domain/          # Entidade ShortUrl + porta ICodeGenerator (sem dependências)
   ShortUrl.Api/             # Controllers, Program.cs, DI, rate limiter, Swagger
   ShortUrl.Application/     # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
-  ShortUrl.Infrastructure/  # AppDbContext, configs EF, adapter Base62CodeGenerator
+  ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
+  ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 22 testes xUnit (generators, service, integração)
+  ShortUrl.Tests/           # 23 testes xUnit (generators, service, integração, modelo Postgres)
 ```
 
-Regra de dependência: `Api -> Application -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService`.
+Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService`.
 
 ```mermaid
 graph LR
   Api[ShortUrl.Api] --> Application[ShortUrl.Application]
   Api --> Infrastructure[ShortUrl.Infrastructure]
+  Api --> Postgres[ShortUrl.Infrastructure.Postgres]
+  Postgres --> Infrastructure
   Application --> Infrastructure
   Application --> Domain[ShortUrl.Domain]
   Infrastructure --> Domain
@@ -144,10 +148,11 @@ graph LR
 - **302 (não 301)** nos redirects para que expiração e contagem de cliques continuem funcionando (navegadores cacheiam 301 agressivamente).
 - **Códigos Base62 de 7 chars** via `RandomNumberGenerator` (~3,5T combinações) + índice UNIQUE + retry em colisão.
 - **IMemoryCache** (TTL de 5 min, `ShortUrl.CacheTtlSeconds`) no caminho de redirect. O cache-aside guarda apenas `originalUrl` + `expiresAt` (nunca `clickCount`), e o incremento de clique continua no banco via `ExecuteUpdateAsync`, então o `SELECT` quente é o que deixa de acontecer. Redis fica como stretch goal para cache distribuído.
-- **SQLite** para dev local sem setup e testes; PostgreSQL é o provider de produção.
+- **SQLite** (padrão) para dev local sem setup e testes; **PostgreSQL** é opt-in via `Database:Provider=Postgres`. Cada provider tem suas próprias migrations, então o mesmo modelo é validado nos dois.
+- **Serviço agnóstico de provider**: `ShortUrlService` depende apenas de `AppDbContext`; `AddDbContext<AppDbContext, PostgresAppDbContext>` troca a implementação.
 - **Rate limiting de janela fixa** (30 req/min/IP no POST) para evitar abuso, retornando `429` com `Retry-After`.
 - **Aliases reservados** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) são rejeitados para não sombrear rotas do app.
-- **`/health`** verifica o contexto SQLite (`AddDbContextCheck`) para orquestradores checarem readiness.
+- **`/health`** verifica o DbContext configurado (`AddDbContextCheck`) para orquestradores checarem readiness.
 - **Migrations rodam no startup** (com retry), então `docker run` e deploys futuros não precisam de `dotnet ef database update` manual.
 
 ### Cache na prática
@@ -165,17 +170,35 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
 
 ```json
 {
-  "ConnectionStrings": { "Default": "Data Source=shorturl.db" },
+  "Database": { "Provider": "Sqlite" },
+  "ConnectionStrings": {
+    "Default": "Data Source=shorturl.db",
+    "Postgres": ""
+  },
   "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 }
 }
 ```
+
+SQLite é o padrão. Para rodar contra PostgreSQL localmente:
+
+```bash
+docker run --rm -d --name shorturl-pg \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=shorturl \
+  -p 5432:5432 postgres:16-alpine
+
+export Database__Provider=Postgres
+export ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=shorturl;Username=postgres;Password=postgres"
+dotnet run --project src/ShortUrl.Api
+```
+
+As migrations são aplicadas no startup. Cada provider mantém seu próprio histórico (`InitialCreate` para SQLite, `InitialPostgres` para PostgreSQL); nunca aponte um provider para as migrations do outro. Em produção, defina `Database__Provider=Postgres` e `ConnectionStrings__Postgres` como variáveis de ambiente/secrets.
 
 ## Roadmap
 
 Veja `PLAN.md` §12 para a divisão detalhada das fases.
 
 **Escopo ativo**
-- [ ] Provider PostgreSQL + migrations (produção)
+- [x] Provider PostgreSQL + migrations (produção)
 - [ ] Auth JWT + links por usuário + listagem paginada
 - [ ] Deploy de demo pública (Render Free + Neon)
 - [ ] Documentação, testes e runbook de deploy

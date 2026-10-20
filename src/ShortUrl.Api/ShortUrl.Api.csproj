@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ShortUrl.Application\ShortUrl.Application.csproj" />
     <ProjectReference Include="..\ShortUrl.Infrastructure\ShortUrl.Infrastructure.csproj" />
+    <ProjectReference Include="..\ShortUrl.Infrastructure.Postgres\ShortUrl.Infrastructure.Postgres.csproj" />
   </ItemGroup>
 
 </Project>
