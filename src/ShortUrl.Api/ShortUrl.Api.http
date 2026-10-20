@@ -1,5 +1,42 @@
 @host = http://localhost:5000
 
+### Register (expect 201; auto-login)
+# @name register
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "Password123!" }
+
+### Me with the register token (expect 200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{register.response.body.token}}
+
+### Login (expect 200)
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "Password123!" }
+
+### Me with the login token (expect 200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{login.response.body.token}}
+
+### Duplicate register (expect 409)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{ "email": "DEMO@example.com", "password": "Password123!" }
+
+### Invalid login (expect 401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "WrongPassword123!" }
+
+### Me without a token (expect 401)
+GET {{host}}/api/auth/me
+
 ### Create a short URL
 # @name create
 POST {{host}}/api/urls

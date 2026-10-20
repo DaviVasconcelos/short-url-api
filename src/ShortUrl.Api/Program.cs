@@ -1,8 +1,13 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using ShortUrl.Api.Errors;
 using ShortUrl.Application.Options;
 using ShortUrl.Application.Services;
@@ -44,11 +49,52 @@ switch (databaseProvider.ToLowerInvariant())
 var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlOptions>()
     ?? new ShortUrlOptions();
 
+var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()
+    ?? new JwtOptions();
+
+var jwtKey = builder.Configuration["Jwt:Key"];
+var generatedDevelopmentKey = false;
+
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    if (!builder.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException(
+            "Jwt:Key must be configured in non-development environments.");
+    }
+
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    generatedDevelopmentKey = true;
+}
+
+if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key must be at least 32 bytes (256 bits) long.");
+}
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
+    string.IsNullOrWhiteSpace(jwtOptions.Audience))
+{
+    throw new InvalidOperationException(
+        "Jwt:Issuer and Jwt:Audience must be configured.");
+}
+
+if (jwtOptions.ExpiryMinutes <= 0 || jwtOptions.ExpiryMinutes > 1440)
+{
+    throw new InvalidOperationException(
+        "Jwt:ExpiryMinutes must be between 1 and 1440.");
+}
+
+jwtOptions.Key = jwtKey;
+
 builder.Services.AddSingleton(shortUrlOptions);
+builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
 builder.Services.AddScoped<IPasswordHasher<Domain.User>, PasswordHasher<Domain.User>>();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -56,7 +102,50 @@ builder.Services.AddSwaggerGen(options =>
 {
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFile));
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "JWT returned by /api/auth/register or /api/auth/login."
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme
+        {
+            Reference = new OpenApiReference
+            {
+                Type = ReferenceType.SecurityScheme,
+                Id = "Bearer"
+            }
+        }] = Array.Empty<string>()
+    });
 });
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtOptions.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtOptions.Key)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -71,6 +160,16 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
@@ -90,7 +189,7 @@ builder.Services.AddRateLimiter(options =>
             {
                 Status = StatusCodes.Status429TooManyRequests,
                 Title = "Too many requests.",
-                Detail = "The rate limit for creating short URLs has been reached. Try again later."
+                Detail = "The rate limit has been reached. Try again later."
             },
             cancellationToken);
     };
@@ -102,6 +201,12 @@ builder.Services
 
 var app = builder.Build();
 
+if (generatedDevelopmentKey)
+{
+    app.Logger.LogWarning(
+        "Jwt:Key was not configured; using an ephemeral development key. Tokens will be invalidated on restart.");
+}
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -110,6 +215,8 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
