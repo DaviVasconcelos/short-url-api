@@ -13,4 +13,6 @@ public class ShortUrl
     public DateTime? ExpiresAt { get; set; }
 
     public long ClickCount { get; set; }
+
+    public int? OwnerId { get; set; }
 }

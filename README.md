@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
@@ -75,12 +75,12 @@ dotnet test ShortUrl.slnx
 
 ## Testing
 
-**23 xUnit tests** across four areas:
+**24 xUnit tests** across four areas:
 
 - `Generators/` — Base62 code length, alphabet, and argument validation.
 - `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
 - `Integration/` — a `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises `POST /api/urls` → `GET /{code}` (302) → stats (`clickCount = 1`).
-- `Persistence/` — builds the PostgreSQL model without a database and asserts the generated DDL (table, columns, unique index).
+- `Persistence/` — builds the PostgreSQL model without a database and asserts the generated DDL (tables, columns, unique indexes, FK); SQLite ownership covers owned vs. anonymous links.
 
 ## API reference
 
@@ -121,13 +121,13 @@ Dockerfile                 # Multi-stage build (sdk:8.0 -> aspnet:8.0)
 .github/workflows/ci.yml   # restore -> build -> test (+ docker build)
 docs/images/swagger.png    # Swagger UI screenshot used in this README
 src/
-  ShortUrl.Domain/         # ShortUrl entity + ICodeGenerator port (no dependencies)
+  ShortUrl.Domain/         # ShortUrl + User entities, ICodeGenerator port (no dependencies)
   ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
   ShortUrl.Application/    # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
   ShortUrl.Infrastructure/ # AppDbContext, SQLite migrations, Base62CodeGenerator adapter
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + InitialPostgres migration
 tests/
-  ShortUrl.Tests/          # 23 xUnit tests (generators, service, integration, Postgres model)
+  ShortUrl.Tests/          # 24 xUnit tests (generators, service, integration, persistence)
 ```
 
 Dependency rule: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.

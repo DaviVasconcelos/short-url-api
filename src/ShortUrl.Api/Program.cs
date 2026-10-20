@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShortUrl.Api.Errors;
@@ -9,6 +10,7 @@ using ShortUrl.Domain.Abstractions;
 using ShortUrl.Infrastructure.Persistence;
 using ShortUrl.Infrastructure.Postgres.Persistence;
 using ShortUrl.Infrastructure.Security;
+using Domain = ShortUrl.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +47,7 @@ var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlO
 builder.Services.AddSingleton(shortUrlOptions);
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
+builder.Services.AddScoped<IPasswordHasher<Domain.User>, PasswordHasher<Domain.User>>();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
 
 builder.Services.AddControllers();

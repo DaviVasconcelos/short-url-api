@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-20):** Fases 0-7 concluídas e corte enxuto em andamento — **0a e 1a concluídas** (23 testes verdes; provider PostgreSQL com migrations separadas). Próxima entrega: **3a**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
+> **Status (2026-10-20):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a e 3a concluídas** (24 testes verdes; provider PostgreSQL com migrations separadas e schema de ownership). Próxima entrega: **3b**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -306,7 +306,7 @@ Content-Type: application/json
 |  | **1b** Compose local + job Postgres na CI + tool manifest | **Opcional rápido** | `dotnet ef database update` verde na CI | 1a |
 | **2. Cache seam** | **2a** `IShortUrlCache` + `CachedShortUrl` + `DistributedShortUrlCache` | **Stretch** | Cache abstrato compila e é resolvido pela DI | 0a |
 |  | **2b** `ShortUrlService` + testes com cache abstrato | **Stretch** | 22 testes verdes; redirect continua funcionando | 2a |
-| **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | **Ativo** | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
+| **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | **Feito** | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
 |  | **3b** register/login/me + JWT + 401/403 | **Ativo** | Fluxo de login e `me` funcionando; Swagger com Bearer | 3a |
 |  | **3c** Ownership no create/delete + política de anônimos | **Ativo** | Dono deleta; não-dono e anônimo recebem `403` | 3b |
 |  | **3d** `GET /api/urls` paginado | **Ativo** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
@@ -326,7 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a e 1a concluídas em 2026-10-20.** A ordem restante começa em **3a**.
+- **0a, 1a e 3a concluídas em 2026-10-20.** A ordem restante começa em **3b**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
 - Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.

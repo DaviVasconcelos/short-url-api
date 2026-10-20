@@ -19,9 +19,13 @@ public sealed class PostgresModelTests
         var script = db.Database.GenerateCreateScript();
 
         Assert.Contains("CREATE TABLE \"ShortUrls\"", script);
+        Assert.Contains("CREATE TABLE \"Users\"", script);
         Assert.Contains("\"ShortCode\" character varying(30) NOT NULL", script);
         Assert.Contains("\"OriginalUrl\" character varying(2048) NOT NULL", script);
         Assert.Contains("\"ClickCount\" bigint NOT NULL", script);
+        Assert.Contains("\"OwnerId\" integer", script);
         Assert.Contains("CREATE UNIQUE INDEX \"IX_ShortUrls_ShortCode\"", script);
+        Assert.Contains("CREATE UNIQUE INDEX \"IX_Users_Email\"", script);
+        Assert.Contains("ON DELETE SET NULL", script);
     }
 }

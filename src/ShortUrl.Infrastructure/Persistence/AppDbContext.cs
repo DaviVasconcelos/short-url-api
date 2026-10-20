@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Domain.ShortUrl> ShortUrls => Set<Domain.ShortUrl>();
 
+    public DbSet<Domain.User> Users => Set<Domain.User>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var shortUrl = modelBuilder.Entity<Domain.ShortUrl>();
@@ -40,6 +42,32 @@ public class AppDbContext : DbContext
             .HasDefaultValue(0L);
 
         shortUrl.HasIndex(x => x.ShortCode)
+            .IsUnique();
+
+        shortUrl.HasOne<Domain.User>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        shortUrl.HasIndex(x => x.OwnerId);
+
+        var user = modelBuilder.Entity<Domain.User>();
+
+        user.ToTable("Users");
+        user.HasKey(x => x.Id);
+
+        user.Property(x => x.Email)
+            .IsRequired()
+            .HasMaxLength(320);
+
+        user.Property(x => x.PasswordHash)
+            .IsRequired()
+            .HasMaxLength(500);
+
+        user.Property(x => x.CreatedAt)
+            .IsRequired();
+
+        user.HasIndex(x => x.Email)
             .IsUnique();
 
         base.OnModelCreating(modelBuilder);
