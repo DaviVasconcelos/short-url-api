@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
@@ -13,21 +13,26 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 
 ## Features
 
+- `POST /api/auth/register` — create an account and receive a JWT (auto-login)
+- `POST /api/auth/login` — authenticate and receive a JWT
+- `GET /api/auth/me` — return the authenticated user (Bearer token)
 - `POST /api/urls` — shorten a URL (supports custom alias + expiration)
 - `GET /{code}` — 302 redirect to original URL + click tracking
 - `GET /api/urls/{code}` — stats (original URL, createdAt, expiresAt, clickCount)
 - `DELETE /api/urls/{code}` — delete a short URL
 - Validation (http/https only, max 2048 chars), 409 on alias conflict, 410 on expired link
-- In-memory cache for hot redirect path, fixed-window rate limiting on creation
-- Swagger, HealthChecks (`/health`), Docker, GitHub Actions CI, xUnit tests
+- In-memory cache for hot redirect path, fixed-window rate limiting on creation and auth
+- JWT auth (HS256, 60 min), `PasswordHasher<User>`, normalized emails
+- Swagger with Bearer auth, HealthChecks (`/health`), Docker, GitHub Actions CI, xUnit tests
 
 ## Tech stack
 
 - **.NET 8 / ASP.NET Core** (Controllers) — `net8.0` em todos os `.csproj`
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution formato novo)
 - **EF Core + SQLite** for local dev/tests and **PostgreSQL** for production, each with its own migrations
+- **JWT Bearer** (`Microsoft.AspNetCore.Authentication.JwtBearer`) + `PasswordHasher<User>`
 - **IMemoryCache**, **Rate Limiting** (built-in .NET 8)
-- **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration test
+- **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration tests
 - **Docker** multi-stage build
 
 ## Getting started
@@ -51,7 +56,17 @@ curl -X POST http://localhost:5000/api/urls \
 # 2. follow the redirect (302) and read the stats
 curl -i http://localhost:5000/<shortCode>
 curl http://localhost:5000/api/urls/<shortCode>
+
+# 3. register (returns a JWT) and call the protected endpoint
+curl -X POST http://localhost:5000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"Password123!"}'
+
+curl http://localhost:5000/api/auth/me \
+  -H "Authorization: Bearer <token>"
 ```
+
+In Development, a missing `Jwt:Key` is replaced by an ephemeral key at startup. Tokens survive only until the next restart; set `Jwt__Key` for a stable key.
 
 ![Swagger UI](docs/images/swagger.png)
 
@@ -59,13 +74,16 @@ With Docker (EF migrations are applied automatically on startup):
 
 ```bash
 docker build -t shorturl .
-docker run -p 5000:8080 shorturl
+docker run -p 5000:8080 \
+  -e Jwt__Key="dev-only-key-at-least-32-bytes-long" shorturl
 
 # override the public base URL used in generated short links
-docker run -p 5000:8080 -e ShortUrl__BaseUrl=https://your-domain shorturl
+docker run -p 5000:8080 \
+  -e Jwt__Key="dev-only-key-at-least-32-bytes-long" \
+  -e ShortUrl__BaseUrl=https://your-domain shorturl
 ```
 
-The container listens on `8080`; map it to any host port. The SQLite database lives inside the container, so mount a volume (`-v shorturl-data:/app`) to persist it.
+The container runs in `Production`, so `Jwt__Key` is required and must be at least 32 bytes. Use a real secret outside local demos. The container listens on `8080`; map it to any host port. The SQLite database lives inside the container, so mount a volume (`-v shorturl-data:/app`) to persist it.
 
 Run tests:
 
@@ -75,17 +93,20 @@ dotnet test ShortUrl.slnx
 
 ## Testing
 
-**24 xUnit tests** across four areas:
+**46 xUnit tests** across four areas:
 
 - `Generators/` — Base62 code length, alphabet, and argument validation.
-- `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
-- `Integration/` — a `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises `POST /api/urls` → `GET /{code}` (302) → stats (`clickCount = 1`).
+- `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found, plus registration/login, email normalization, password hashing, JWT claims, and auth failures. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
+- `Integration/` — `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises create → redirect → stats, register → `/me`, login, duplicate email, invalid credentials, and 401 responses. A dedicated test covers the auth rate limit.
 - `Persistence/` — builds the PostgreSQL model without a database and asserts the generated DDL (tables, columns, unique indexes, FK); SQLite ownership covers owned vs. anonymous links.
 
 ## API reference
 
 | Method | Route | Success | Description |
 |--------|-------|---------|-------------|
+| POST | `/api/auth/register` | `201 Created` | Create account and return JWT |
+| POST | `/api/auth/login` | `200 OK` | Authenticate and return JWT |
+| GET | `/api/auth/me` | `200 OK` | Authenticated user (Bearer token) |
 | POST | `/api/urls` | `201 Created` | Shorten URL |
 | GET | `/{code}` | `302 Found` | Redirect |
 | GET | `/api/urls/{code}` | `200 OK` | Stats |
@@ -109,7 +130,26 @@ Content-Type: application/json
 }
 ```
 
-Error codes: `400` invalid URL, `404` not found, `409` alias in use, `410` expired, `429` rate limited.
+Error codes: `400` invalid URL/email/password, `401` missing/invalid credentials or token, `404` not found, `409` alias or email in use, `410` expired, `429` rate limited.
+
+Auth example:
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "Password123!" }
+```
+
+```json
+{
+  "token": "<jwt>",
+  "expiresAt": "2026-10-20T21:00:00Z",
+  "user": { "id": 1, "email": "demo@example.com", "createdAt": "2026-10-20T20:00:00Z" }
+}
+```
+
+Register also logs the user in. Send the token as `Authorization: Bearer <jwt>` to protected endpoints such as `/api/auth/me`. Tokens last 60 minutes by default; refresh tokens are out of scope.
 
 ## Project structure
 
@@ -122,15 +162,15 @@ Dockerfile                 # Multi-stage build (sdk:8.0 -> aspnet:8.0)
 docs/images/swagger.png    # Swagger UI screenshot used in this README
 src/
   ShortUrl.Domain/         # ShortUrl + User entities, ICodeGenerator port (no dependencies)
-  ShortUrl.Api/            # Controllers, Program.cs, DI, rate limiter, Swagger
-  ShortUrl.Application/    # DTOs, ShortUrlOptions, IShortUrlService, ShortUrlService
+  ShortUrl.Api/            # Controllers, Program.cs, DI, JWT, rate limiter, Swagger
+  ShortUrl.Application/    # DTOs, options, services (URLs + auth), JWT generation
   ShortUrl.Infrastructure/ # AppDbContext, SQLite migrations, Base62CodeGenerator adapter
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + InitialPostgres migration
 tests/
-  ShortUrl.Tests/          # 24 xUnit tests (generators, service, integration, persistence)
+  ShortUrl.Tests/          # 46 xUnit tests (generators, services, integration, persistence)
 ```
 
-Dependency rule: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService`.
+Dependency rule: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService` or `IAuthService`.
 
 ```mermaid
 graph LR
@@ -150,7 +190,8 @@ graph LR
 - **IMemoryCache** (5 min TTL, `ShortUrl.CacheTtlSeconds`) for the redirect path. Cache-aside stores only `originalUrl` + `expiresAt` (never `clickCount`), and the click increment stays in the database via `ExecuteUpdateAsync`, so the hot `SELECT` is what gets skipped. Redis remains a stretch goal for distributed caching.
 - **SQLite** (default) for zero-setup local dev and tests; **PostgreSQL** is opt-in via `Database:Provider=Postgres`. Each provider has its own migrations, so the same model is validated against both.
 - **Provider-agnostic service**: `ShortUrlService` depends only on `AppDbContext`; `AddDbContext<AppDbContext, PostgresAppDbContext>` swaps the implementation.
-- **Fixed-window rate limiting** (30 req/min/IP on POST) to prevent abuse, returning `429` with `Retry-After`.
+- **JWT auth** with HS256, 60-minute expiry, `sub`/`email`/`jti` claims. `AuthService` validates e-mails, normalizes them to lowercase, hashes passwords with ASP.NET Core Identity's `PasswordHasher<User>`, and issues tokens after register/login. There are no refresh tokens, roles, or password reset flows.
+- **Fixed-window rate limiting**: 30 req/min/IP on URL creation and 10 req/min/IP on register/login, returning `429` with `Retry-After`.
 - **Reserved aliases** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) are rejected to avoid shadowing app routes.
 - **`/health`** checks the configured DbContext (`AddDbContextCheck`) so orchestrators can probe readiness.
 - **Migrations run on startup** (with retry), so `docker run` and future deploys need no manual `dotnet ef database update`.
@@ -175,9 +216,12 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
     "Default": "Data Source=shorturl.db",
     "Postgres": ""
   },
-  "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 }
+  "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 },
+  "Jwt": { "Issuer": "ShortUrl.Api", "Audience": "ShortUrl.Api", "ExpiryMinutes": 60 }
 }
 ```
+
+`Jwt:Key` is intentionally absent from configuration. In Development, the API generates an ephemeral 32-byte key when it is missing (tokens are invalidated on restart). Outside Development, startup fails fast unless `Jwt__Key` is set to a secret of at least 32 bytes. The Docker image runs in `Production`, so pass `-e Jwt__Key=...` when running it.
 
 SQLite is the default. To run against PostgreSQL locally:
 
@@ -199,7 +243,9 @@ See `PLAN.md` §12 for the detailed phase breakdown.
 
 **Active scope**
 - [x] PostgreSQL provider + migrations (production)
-- [ ] JWT auth + per-user ownership + paginated list
+- [x] JWT auth (`register`, `login`, `me`) with Swagger Bearer support
+- [ ] Per-user ownership + protected delete
+- [ ] Paginated listing of the authenticated user's links
 - [ ] Public demo deploy (Render Free + Neon)
 - [ ] Docs, tests, and deploy runbook
 
