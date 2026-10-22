@@ -37,16 +37,18 @@ Content-Type: application/json
 ### Me without a token (expect 401)
 GET {{host}}/api/auth/me
 
-### Create a short URL
+### Create an owned short URL (expect 201)
 # @name create
 POST {{host}}/api/urls
 Content-Type: application/json
+Authorization: Bearer {{login.response.body.token}}
 
 { "url": "https://dotnet.microsoft.com/en-us/learn", "customAlias": null, "expiresInDays": 30 }
 
-### Create with a custom alias
+### Create an owned URL with a custom alias (expect 201)
 POST {{host}}/api/urls
 Content-Type: application/json
+Authorization: Bearer {{login.response.body.token}}
 
 { "url": "https://learn.microsoft.com/ef/core/", "customAlias": "ef-core", "expiresInDays": 7 }
 
@@ -57,8 +59,38 @@ Accept: text/html
 ### Stats (expect 200)
 GET {{host}}/api/urls/{{create.response.body.shortCode}}
 
-### Delete (expect 204)
+### Delete owned URL (expect 204)
 DELETE {{host}}/api/urls/{{create.response.body.shortCode}}
+Authorization: Bearer {{login.response.body.token}}
+
+### Create an anonymous short URL (expect 201)
+# @name anonymousCreate
+POST {{host}}/api/urls
+Content-Type: application/json
+
+{ "url": "https://example.com/anonymous", "customAlias": null, "expiresInDays": 30 }
+
+### Delete without a token (expect 401)
+DELETE {{host}}/api/urls/{{anonymousCreate.response.body.shortCode}}
+
+### Delete an anonymous link as an authenticated user (expect 403)
+DELETE {{host}}/api/urls/{{anonymousCreate.response.body.shortCode}}
+Authorization: Bearer {{login.response.body.token}}
+
+### Delete a missing code with a token (expect 404)
+DELETE {{host}}/api/urls/doesnotexist
+Authorization: Bearer {{login.response.body.token}}
+
+### Create with an invalid token (expect 401)
+POST {{host}}/api/urls
+Content-Type: application/json
+Authorization: Bearer not-a-jwt
+
+{ "url": "https://example.com/invalid-token", "customAlias": null, "expiresInDays": 30 }
+
+### Delete with an invalid token (expect 401)
+DELETE {{host}}/api/urls/anything
+Authorization: Bearer not-a-jwt
 
 ### Health (expect 200)
 GET {{host}}/health

@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-20):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a, 3a e 3b concluídas** (46 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership e auth JWT). Próxima entrega: **3c**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
+> **Status (2026-10-22):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a, 3a, 3b e 3c concluídas** (61 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT e delete protegido). Próxima entrega: **3d**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -290,7 +290,7 @@ Content-Type: application/json
 - **Banco local/testes:** SQLite (mantém a suíte rápida e sem dependência externa).
 - **Banco de produção:** PostgreSQL (Neon).
 - **Auth:** JWT + ownership. Criação anônima continua; link autenticado ganha dono; `DELETE` exige o dono.
-- **Links anônimos:** não podem ser deletados pela API (`403`).
+- **Links anônimos:** não podem ser deletados pela API; chamada sem token recebe `401` e usuário autenticado recebe `403`.
 - **Stats (`GET /api/urls/{code}`):** continuam públicos.
 - **Listagem (`GET /api/urls`):** exige autenticação e retorna apenas os links do usuário.
 - **Cache:** manter o `IMemoryCache` atual; seam + Redis ficam como stretch.
@@ -307,9 +307,9 @@ Content-Type: application/json
 | **2. Cache seam** | **2a** `IShortUrlCache` + `CachedShortUrl` + `DistributedShortUrlCache` | **Stretch** | Cache abstrato compila e é resolvido pela DI | 0a |
 |  | **2b** `ShortUrlService` + testes com cache abstrato | **Stretch** | 22 testes verdes; redirect continua funcionando | 2a |
 | **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | **Feito** | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
-|  | **3b** register/login/me + JWT + 401 | **Feito** | Fluxo de login e `me` funcionando; Swagger com Bearer; `403` fica para a 3c | 3a |
-|  | **3c** Ownership no create/delete + política de anônimos | **Ativo** | Dono deleta; não-dono e anônimo recebem `403` | 3b |
-|  | **3d** `GET /api/urls` paginado | **Pendente** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
+|  | **3b** register/login/me + JWT + 401 | **Feito** | Fluxo de login e `me` funcionando; Swagger com Bearer; ownership concluído na 3c | 3a |
+|  | **3c** Ownership no create/delete + política de anônimos | **Feito** | Dono deleta (`204`); sem token `401`; não-dono e link anônimo recebem `403`; código ausente `404` | 3b |
+|  | **3d** `GET /api/urls` paginado | **Ativo** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
 |  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
 | **4. Deploy** | **4a** Container readiness | **Pendente** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
 |  | **4b** Render + Neon | **Pendente** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
@@ -326,7 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a e 3b concluídas em 2026-10-20.** A ordem restante começa em **3c**.
+- **0a, 1a, 3a, 3b e 3c concluídas em 2026-10-22.** A ordem restante começa em **3d**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
 - Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.
@@ -365,12 +365,13 @@ Content-Type: application/json
 ### 12.7 Definição de pronto do corte enxuto
 
 - [ ] PostgreSQL em produção (Neon) com migrations separadas.
-- [ ] Auth JWT + ownership + listagem paginada.
+- [x] Auth JWT + ownership.
+- [ ] Listagem paginada dos links do usuário.
 - [ ] Deploy público no Render Free funcionando.
 - [ ] README/AGENTS/PLAN sincronizados com URL, arquitetura e limitações.
 - [ ] CI verde com build, testes e Docker.
 - [ ] Swagger acessível na demo pública.
-- [ ] Testes cobrindo auth, ownership, create, redirect e delete.
+- [x] Testes cobrindo auth, ownership, create, redirect e delete.
 
 ### 12.8 Fluxo de trabalho
 
