@@ -1,6 +1,7 @@
 using ShortUrl.Application.Dtos;
 using ShortUrl.Application.Services;
 using ShortUrl.Tests.Support;
+using Domain = ShortUrl.Domain;
 using ShortUrlEntity = ShortUrl.Domain.ShortUrl;
 
 namespace ShortUrl.Tests.Services;
@@ -60,6 +61,52 @@ public sealed class ShortUrlServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WithOwnerAndGeneratedCode_AssignsOwnerId()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/owned", null, 30),
+            owner.Id);
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+
+        var entity = ctx.Db.ShortUrls.Single(x => x.ShortCode == result.Response!.ShortCode);
+        Assert.Equal(owner.Id, entity.OwnerId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithOwnerAndCustomAlias_AssignsOwnerId()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/owned", "owned-link", 30),
+            owner.Id);
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+
+        var entity = ctx.Db.ShortUrls.Single(x => x.ShortCode == "owned-link");
+        Assert.Equal(owner.Id, entity.OwnerId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithoutOwner_LeavesOwnerIdNull()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/anonymous", null, 30));
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+
+        var entity = ctx.Db.ShortUrls.Single(x => x.ShortCode == result.Response!.ShortCode);
+        Assert.Null(entity.OwnerId);
+    }
+
+    [Fact]
     public async Task GetOriginalAsync_IncrementsClickCount()
     {
         using var ctx = new SqliteTestContext();
@@ -93,19 +140,78 @@ public sealed class ShortUrlServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_EvictsCacheEntry_AndSubsequentLookupIsNotFound()
+    public async Task DeleteAsync_ByOwner_DeletesAndEvictsCacheEntry()
     {
         using var ctx = new SqliteTestContext();
-        var created = await ctx.Service.CreateAsync(new CreateShortUrlRequest("https://example.com/temp", null, 30));
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var created = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/temp", null, 30),
+            owner.Id);
         var code = created.Response!.ShortCode;
         await ctx.Service.GetOriginalAsync(code);
 
-        var deleted = await ctx.Service.DeleteAsync(code);
+        var deleted = await ctx.Service.DeleteAsync(code, owner.Id);
         var lookup = await ctx.Service.GetOriginalAsync(code);
 
-        Assert.True(deleted);
+        Assert.Equal(DeleteShortUrlStatus.Deleted, deleted.Status);
         Assert.False(ctx.Cache.TryGetValue($"url:{code}", out object? _));
         Assert.Equal(GetShortUrlStatus.NotFound, lookup.Status);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ByNonOwner_ReturnsForbiddenAndKeepsLink()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var other = await AddUserAsync(ctx, "other@example.com");
+        var created = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/protected", null, 30),
+            owner.Id);
+        var code = created.Response!.ShortCode;
+
+        var result = await ctx.Service.DeleteAsync(code, other.Id);
+
+        Assert.Equal(DeleteShortUrlStatus.Forbidden, result.Status);
+        Assert.NotNull(ctx.Db.ShortUrls.SingleOrDefault(x => x.ShortCode == code));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ForAnonymousLink_ReturnsForbidden()
+    {
+        using var ctx = new SqliteTestContext();
+        var user = await AddUserAsync(ctx, "user@example.com");
+        var created = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/anonymous", null, 30));
+        var code = created.Response!.ShortCode;
+
+        var result = await ctx.Service.DeleteAsync(code, user.Id);
+
+        Assert.Equal(DeleteShortUrlStatus.Forbidden, result.Status);
+        Assert.NotNull(ctx.Db.ShortUrls.SingleOrDefault(x => x.ShortCode == code));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithoutUser_ReturnsForbidden()
+    {
+        using var ctx = new SqliteTestContext();
+        var created = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/anonymous", null, 30));
+        var code = created.Response!.ShortCode;
+
+        var result = await ctx.Service.DeleteAsync(code);
+
+        Assert.Equal(DeleteShortUrlStatus.Forbidden, result.Status);
+        Assert.NotNull(ctx.Db.ShortUrls.SingleOrDefault(x => x.ShortCode == code));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCodeDoesNotExist_ReturnsNotFound()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.DeleteAsync("doesnotexist", 1);
+
+        Assert.Equal(DeleteShortUrlStatus.NotFound, result.Status);
     }
 
     [Fact]
@@ -134,5 +240,21 @@ public sealed class ShortUrlServiceTests
         var result = await ctx.Service.GetOriginalAsync("doesnotexist");
 
         Assert.Equal(GetShortUrlStatus.NotFound, result.Status);
+    }
+
+    private static async Task<Domain.User> AddUserAsync(
+        SqliteTestContext ctx,
+        string email)
+    {
+        var user = new Domain.User
+        {
+            Email = email,
+            PasswordHash = "hash"
+        };
+
+        ctx.Db.Users.Add(user);
+        await ctx.Db.SaveChangesAsync();
+
+        return user;
     }
 }

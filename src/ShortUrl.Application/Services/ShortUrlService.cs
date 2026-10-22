@@ -44,6 +44,7 @@ public sealed class ShortUrlService : IShortUrlService
 
     public async Task<CreateShortUrlResult> CreateAsync(
         CreateShortUrlRequest request,
+        int? ownerId = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryNormalizeUrl(request.Url, out var originalUrl))
@@ -56,8 +57,8 @@ public sealed class ShortUrlService : IShortUrlService
         var expiresAt = ResolveExpiry(request.ExpiresInDays);
 
         return alias is not null
-            ? await CreateWithAliasAsync(alias, originalUrl, expiresAt, cancellationToken)
-            : await CreateWithGeneratedCodeAsync(originalUrl, expiresAt, cancellationToken);
+            ? await CreateWithAliasAsync(alias, originalUrl, expiresAt, ownerId, cancellationToken)
+            : await CreateWithGeneratedCodeAsync(originalUrl, expiresAt, ownerId, cancellationToken);
     }
 
     public async Task<GetShortUrlResult> GetOriginalAsync(
@@ -122,22 +123,26 @@ public sealed class ShortUrlService : IShortUrlService
                 entity.ClickCount);
     }
 
-    public async Task<bool> DeleteAsync(
+    public async Task<DeleteShortUrlResult> DeleteAsync(
         string shortCode,
+        int? userId = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ShortUrls
             .FirstOrDefaultAsync(x => x.ShortCode == shortCode, cancellationToken);
 
         if (entity is null)
-            return false;
+            return DeleteShortUrlResult.NotFound();
+
+        if (userId is null || entity.OwnerId != userId)
+            return DeleteShortUrlResult.Forbidden();
 
         _db.ShortUrls.Remove(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
         _cache.Remove(CacheKeyFor(shortCode));
 
-        return true;
+        return DeleteShortUrlResult.Deleted();
     }
 
     private Task<int> IncrementClickAsync(string shortCode, CancellationToken cancellationToken) =>
@@ -153,12 +158,13 @@ public sealed class ShortUrlService : IShortUrlService
         string alias,
         string originalUrl,
         DateTime? expiresAt,
+        int? ownerId,
         CancellationToken cancellationToken)
     {
         if (await _db.ShortUrls.AnyAsync(x => x.ShortCode == alias, cancellationToken))
             return CreateShortUrlResult.AliasConflict();
 
-        var entity = BuildEntity(alias, originalUrl, expiresAt);
+        var entity = BuildEntity(alias, originalUrl, expiresAt, ownerId);
         _db.ShortUrls.Add(entity);
 
         try
@@ -177,11 +183,16 @@ public sealed class ShortUrlService : IShortUrlService
     private async Task<CreateShortUrlResult> CreateWithGeneratedCodeAsync(
         string originalUrl,
         DateTime? expiresAt,
+        int? ownerId,
         CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < MaxCodeGenerationAttempts; attempt++)
         {
-            var entity = BuildEntity(_codeGenerator.Generate(_options.CodeLength), originalUrl, expiresAt);
+            var entity = BuildEntity(
+                _codeGenerator.Generate(_options.CodeLength),
+                originalUrl,
+                expiresAt,
+                ownerId);
             _db.ShortUrls.Add(entity);
 
             try
@@ -198,12 +209,17 @@ public sealed class ShortUrlService : IShortUrlService
         throw new InvalidOperationException("Unable to generate a unique short code after multiple attempts.");
     }
 
-    private static ShortUrlEntity BuildEntity(string shortCode, string originalUrl, DateTime? expiresAt) =>
+    private static ShortUrlEntity BuildEntity(
+        string shortCode,
+        string originalUrl,
+        DateTime? expiresAt,
+        int? ownerId) =>
         new()
         {
             ShortCode = shortCode,
             OriginalUrl = originalUrl,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            OwnerId = ownerId
         };
 
     private ShortUrlResponse ToResponse(ShortUrlEntity entity) =>

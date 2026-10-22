@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using ShortUrl.Api.Extensions;
+using ShortUrl.Api.Filters;
 using ShortUrl.Application.Dtos;
 using ShortUrl.Application.Services;
 
@@ -19,19 +22,23 @@ public sealed class UrlsController : ControllerBase
     /// <summary>Shortens a URL, optionally with a custom alias and expiration.</summary>
     /// <response code="201">Short URL created. The <c>Location</c> header points to the stats resource.</response>
     /// <response code="400">The URL or alias is invalid.</response>
+    /// <response code="401">The Authorization header is invalid or expired.</response>
     /// <response code="409">The custom alias is already in use.</response>
     /// <response code="429">Too many requests.</response>
     [HttpPost]
     [EnableRateLimiting("create-url")]
+    [RequireValidOptionalToken]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Create(
         [FromBody] CreateShortUrlRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _service.CreateAsync(request, cancellationToken);
+        var ownerId = User.GetUserId();
+        var result = await _service.CreateAsync(request, ownerId, cancellationToken);
 
         return result.Status switch
         {
@@ -72,18 +79,33 @@ public sealed class UrlsController : ControllerBase
         return stats is null ? NotFound() : Ok(stats);
     }
 
-    /// <summary>Deletes a short URL.</summary>
+    /// <summary>Deletes a short URL owned by the authenticated user.</summary>
     /// <response code="204">Deleted.</response>
+    /// <response code="401">The token is missing or invalid.</response>
+    /// <response code="403">The authenticated user does not own this URL.</response>
     /// <response code="404">The short code does not exist.</response>
     [HttpDelete("{code}")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(
         string code,
         CancellationToken cancellationToken)
     {
-        var deleted = await _service.DeleteAsync(code, cancellationToken);
+        var userId = User.GetUserId();
 
-        return deleted ? NoContent() : NotFound();
+        if (userId is null)
+            return Unauthorized();
+
+        var result = await _service.DeleteAsync(code, userId, cancellationToken);
+
+        return result.Status switch
+        {
+            DeleteShortUrlStatus.Deleted => NoContent(),
+            DeleteShortUrlStatus.NotFound => NotFound(),
+            _ => StatusCode(StatusCodes.Status403Forbidden)
+        };
     }
 }

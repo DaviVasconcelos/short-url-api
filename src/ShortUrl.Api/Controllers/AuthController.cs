@@ -1,9 +1,7 @@
-using System.Globalization;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using ShortUrl.Api.Extensions;
 using ShortUrl.Application.Dtos;
 using ShortUrl.Application.Services;
 
@@ -90,18 +88,12 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
-        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var userId = User.GetUserId();
 
-        if (!int.TryParse(
-                subject,
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var userId))
-        {
+        if (userId is null)
             return Unauthorized();
-        }
 
-        var user = await _authService.GetUserAsync(userId, cancellationToken);
+        var user = await _authService.GetUserAsync(userId.Value, cancellationToken);
 
         return user is null ? Unauthorized() : Ok(user);
     }

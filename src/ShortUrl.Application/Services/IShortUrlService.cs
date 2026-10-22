@@ -6,6 +6,7 @@ public interface IShortUrlService
 {
     Task<CreateShortUrlResult> CreateAsync(
         CreateShortUrlRequest request,
+        int? ownerId = null,
         CancellationToken cancellationToken = default);
 
     Task<GetShortUrlResult> GetOriginalAsync(
@@ -16,7 +17,8 @@ public interface IShortUrlService
         string shortCode,
         CancellationToken cancellationToken = default);
 
-    Task<bool> DeleteAsync(
+    Task<DeleteShortUrlResult> DeleteAsync(
         string shortCode,
+        int? userId = null,
         CancellationToken cancellationToken = default);
 }
