@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-26):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a, 3a, 3b, 3c e 3d concluídas** (71 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido e listagem paginada). Próxima entrega: **4a**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
+> **Status (2026-10-26):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas** (80 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido, listagem paginada e container readiness). Próxima entrega: **4b** (deploy no Render + Neon). As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -311,7 +311,7 @@ Content-Type: application/json
 |  | **3c** Ownership no create/delete + política de anônimos | **Feito** | Dono deleta (`204`); sem token `401`; não-dono e link anônimo recebem `403`; código ausente `404` | 3b |
 |  | **3d** `GET /api/urls` paginado | **Feito** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
 |  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
-| **4. Deploy** | **4a** Container readiness | **Ativo** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
+| **4. Deploy** | **4a** Container readiness | **Feito** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
 |  | **4b** Render + Neon | **Pendente** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
@@ -326,10 +326,9 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a, 3b, 3c e 3d concluídas.** A 3d foi concluída em 2026-10-26; a ordem restante começa em **4a**.
+- **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas.** A 4a foi concluída em 2026-10-26; a ordem restante começa em **4b**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
-- **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
-- Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.
+- **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
 - **2, 5, 6 e 3e são stretch/adiados**: só entram depois que o corte ativo estiver publicado.
 - **8a está cortado**; PostgreSQL já demonstra a troca de provider.
@@ -351,6 +350,7 @@ Content-Type: application/json
   ```
 - **Render:** web service Docker Free, região `virginia`, `healthCheckPath: /health/live`, `autoDeployTrigger: checksPass`.
 - **Secrets no Render:** `ConnectionStrings__Postgres` com `sync: false`; `Jwt__Key` com `generateValue: true`.
+- **Variáveis no Render:** `Database__Provider=Postgres` e `Swagger__Enabled=true` (o Swagger fica desligado em Production por padrão). `ShortUrl__BaseUrl` é opcional; sem ela, os links usam o host público da requisição.
 - **Primeiro acesso após idle:** cold start de ~1 min; não usar keep-alive, pois consumiria as 750 h/mês.
 - **Stretch de Redis:** criar Render Key Value Free (`ipAllowList: []`, `persistenceMode: off`) e configurar `Redis__Host`/`Redis__Port` via `fromService`.
 

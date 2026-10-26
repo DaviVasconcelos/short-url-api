@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -25,7 +25,7 @@ Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Co
 - Cache em memória no caminho quente de redirect, rate limiting de janela fixa na criação e auth
 - Auth JWT (HS256, 60 min), `PasswordHasher<User>`, emails normalizados
 - Ownership: creates autenticados ganham dono; só o dono lista ou deleta, e links anônimos não podem ser deletados pela API
-- Swagger com Bearer auth, HealthChecks (`/health`), Docker, CI no GitHub Actions, testes xUnit
+- Swagger com Bearer auth, HealthChecks (`/health/live` para liveness, `/health` para readiness), Docker, CI no GitHub Actions, testes xUnit
 
 ## Stack
 
@@ -88,13 +88,19 @@ docker build -t shorturl .
 docker run -p 5000:8080 \
   -e Jwt__Key="dev-only-key-at-least-32-bytes-long" shorturl
 
+# estilo Render: escuta em $PORT e expõe o Swagger em Production
+docker run -p 10000:10000 \
+  -e PORT=10000 \
+  -e Jwt__Key="dev-only-key-at-least-32-bytes-long" \
+  -e Swagger__Enabled=true shorturl
+
 # sobrescreve a URL base usada nos links curtos gerados
 docker run -p 5000:8080 \
   -e Jwt__Key="dev-only-key-at-least-32-bytes-long" \
   -e ShortUrl__BaseUrl=https://your-domain shorturl
 ```
 
-O container roda em `Production`, então `Jwt__Key` é obrigatória e precisa ter pelo menos 32 bytes. Use um secret real fora de demos locais. O container escuta em `8080`; mapeie para qualquer porta do host. O banco SQLite fica dentro do container, então monte um volume (`-v shorturl-data:/app`) para persistir.
+O container roda em `Production`, então `Jwt__Key` é obrigatória e precisa ter pelo menos 32 bytes. Use um secret real fora de demos locais. Ele escuta em `8080` por padrão; quando `PORT` está definida (como no Render), escuta nessa porta. O banco SQLite fica dentro do container, então monte um volume (`-v shorturl-data:/app`) para persistir. O Swagger fica desabilitado em Production a menos que `Swagger__Enabled=true`. Quando `ShortUrl__BaseUrl` não está definida, os links gerados usam o scheme e o host da requisição (respeitando `X-Forwarded-Proto`), então o deploy funciona sem configuração extra.
 
 Rodar os testes:
 
@@ -104,11 +110,11 @@ dotnet test ShortUrl.slnx
 
 ## Testes
 
-**71 testes xUnit** em quatro áreas:
+**80 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
-- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404` e paginação autenticada. Um teste dedicado cobre o rate limit de auth.
+- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders` e a base URL derivada da requisição. Um teste dedicado cobre o rate limit de auth.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -123,7 +129,8 @@ dotnet test ShortUrl.slnx
 | GET | `/{code}` | `302 Found` | Redirect |
 | GET | `/api/urls/{code}` | `200 OK` | Estatísticas |
 | DELETE | `/api/urls/{code}` | `204 No Content` | Remove URL com dono (Bearer token obrigatório) |
-| GET | `/health` | `200 OK` | Health check |
+| GET | `/health/live` | `200 OK` | Probe de liveness (sem dependências) |
+| GET | `/health` | `200 OK` | Probe de readiness (verifica o banco) |
 
 `POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `GET /api/urls` exige Bearer token e retorna apenas os links do chamador; `page` tem padrão `1`, `pageSize` tem padrão `20` (máximo `100`), e links expirados continuam listados até serem deletados. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
 
@@ -207,7 +214,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 71 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 80 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.
@@ -234,7 +241,9 @@ graph LR
 - **Ownership** é opcional no create e obrigatório no delete. Um Bearer token válido define `ShortUrl.OwnerId`; criação anônima continua permitida. `DELETE` é só para o dono, retorna `403` para não-donos e links anônimos, e `401` sem token válido. Stats e redirects continuam públicos.
 - **Rate limiting de janela fixa**: 30 req/min/IP na criação de URLs e 10 req/min/IP em register/login, retornando `429` com `Retry-After`.
 - **Aliases reservados** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) são rejeitados para não sombrear rotas do app.
-- **`/health`** verifica o DbContext configurado (`AddDbContextCheck`) para orquestradores checarem readiness.
+- **Liveness e readiness são separados**: `/health/live` só prova que o processo está de pé, enquanto `/health` executa o check do DbContext. Orquestradores devem apontar o liveness para `/health/live`, para que um banco acordando não provoque restarts.
+- **Forwarded headers** (`X-Forwarded-For` e `X-Forwarded-Proto`) são aceitos de qualquer proxy, porque o pool do Render é dinâmico. O `ForwardLimit` fica em `1`, então só o endereço mais à direita é consumido e o rate limit enxerga o IP do cliente.
+- **Base URL** vem de `ShortUrl:BaseUrl` quando configurada; caso contrário, é derivada da requisição (`scheme://host`), o que mantém os links corretos no localhost e na demo pública. `Swagger:Enabled` segue o ambiente (ligado em Development, desligado em Production).
 - **Migrations rodam no startup** (com retry), então `docker run` e deploys futuros não precisam de `dotnet ef database update` manual.
 
 ### Cache na prática
@@ -257,12 +266,14 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
     "Default": "Data Source=shorturl.db",
     "Postgres": ""
   },
-  "ShortUrl": { "BaseUrl": "http://localhost:5000", "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 },
+  "ShortUrl": { "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 },
   "Jwt": { "Issuer": "ShortUrl.Api", "Audience": "ShortUrl.Api", "ExpiryMinutes": 60 }
 }
 ```
 
 `Jwt:Key` fica intencionalmente fora da configuração. Em Development, a API gera uma chave efêmera de 32 bytes quando ela está ausente (os tokens são invalidados no restart). Fora de Development, o startup falha rápido a menos que `Jwt__Key` seja definida com um secret de pelo menos 32 bytes. A imagem Docker roda em `Production`, então passe `-e Jwt__Key=...` ao executá-la.
+
+`ShortUrl:BaseUrl` é opcional: deixe sem valor para derivar os links da requisição, ou defina `ShortUrl__BaseUrl` para fixar um domínio público. O Swagger segue `Swagger:Enabled` e vem ligado em Development / desligado em Production; defina `Swagger__Enabled=true` para expô-lo em um container ou deploy.
 
 SQLite é o padrão. Para rodar contra PostgreSQL localmente:
 
@@ -287,6 +298,7 @@ Veja `PLAN.md` §12 para a divisão detalhada das fases.
 - [x] Auth JWT (`register`, `login`, `me`) com Bearer no Swagger
 - [x] Links por usuário + delete protegido
 - [x] Listagem paginada dos links do usuário autenticado
+- [x] Container readiness (`$PORT`, probes de liveness/readiness, forwarded headers, flag do Swagger, fallback de base URL)
 - [ ] Deploy de demo pública (Render Free + Neon)
 - [ ] Documentação, testes e runbook de deploy
 
