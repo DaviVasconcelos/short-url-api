@@ -422,11 +422,48 @@ public sealed class ShortUrlServiceTests
         var item = Assert.Single(result.Items);
 
         Assert.Equal("mapped-link", item.ShortCode);
-        Assert.Equal($"{ctx.Options.BaseUrl.TrimEnd('/')}/mapped-link", item.ShortUrl);
+        Assert.Equal($"{ctx.Options.BaseUrl!.TrimEnd('/')}/mapped-link", item.ShortUrl);
         Assert.Equal("https://example.com/mapped", item.OriginalUrl);
         Assert.Equal(createdAt, item.CreatedAt);
         Assert.Equal(expiresAt, item.ExpiresAt);
         Assert.Equal(7L, item.ClickCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithRequestBaseUrl_PrefersItOverConfiguredBaseUrl()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/public", null, 30),
+            baseUrl: "https://public.example");
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+        Assert.Equal($"https://public.example/{result.Response!.ShortCode}", result.Response.ShortUrl);
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_WithRequestBaseUrl_PrefersItOverConfiguredBaseUrl()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+
+        ctx.Db.ShortUrls.Add(new ShortUrlEntity
+        {
+            ShortCode = "public-link",
+            OriginalUrl = "https://example.com/public",
+            OwnerId = owner.Id
+        });
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(
+            owner.Id,
+            1,
+            20,
+            baseUrl: "https://public.example");
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("https://public.example/public-link", item.ShortUrl);
     }
 
     private static async Task<Domain.User> AddUserAsync(

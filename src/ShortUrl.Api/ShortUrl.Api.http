@@ -103,7 +103,10 @@ Authorization: Bearer not-a-jwt
 DELETE {{host}}/api/urls/anything
 Authorization: Bearer not-a-jwt
 
-### Health (expect 200)
+### Liveness (expect 200, no database dependency)
+GET {{host}}/health/live
+
+### Readiness (expect 200, checks the database)
 GET {{host}}/health
 
 ### Invalid URL (expect 400)

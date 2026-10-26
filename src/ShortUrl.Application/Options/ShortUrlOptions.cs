@@ -2,7 +2,7 @@ namespace ShortUrl.Application.Options;
 
 public sealed class ShortUrlOptions
 {
-    public string BaseUrl { get; set; } = "http://localhost:5000";
+    public string? BaseUrl { get; set; }
 
     public int CodeLength { get; set; } = 7;
 

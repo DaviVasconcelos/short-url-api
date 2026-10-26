@@ -45,6 +45,7 @@ public sealed class ShortUrlService : IShortUrlService
     public async Task<CreateShortUrlResult> CreateAsync(
         CreateShortUrlRequest request,
         int? ownerId = null,
+        string? baseUrl = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryNormalizeUrl(request.Url, out var originalUrl))
@@ -57,8 +58,8 @@ public sealed class ShortUrlService : IShortUrlService
         var expiresAt = ResolveExpiry(request.ExpiresInDays);
 
         return alias is not null
-            ? await CreateWithAliasAsync(alias, originalUrl, expiresAt, ownerId, cancellationToken)
-            : await CreateWithGeneratedCodeAsync(originalUrl, expiresAt, ownerId, cancellationToken);
+            ? await CreateWithAliasAsync(alias, originalUrl, expiresAt, ownerId, baseUrl, cancellationToken)
+            : await CreateWithGeneratedCodeAsync(originalUrl, expiresAt, ownerId, baseUrl, cancellationToken);
     }
 
     public async Task<GetShortUrlResult> GetOriginalAsync(
@@ -127,6 +128,7 @@ public sealed class ShortUrlService : IShortUrlService
         int userId,
         int page,
         int pageSize,
+        string? baseUrl = null,
         CancellationToken cancellationToken = default)
     {
         var ownedLinks = _db.ShortUrls
@@ -149,7 +151,7 @@ public sealed class ShortUrlService : IShortUrlService
                 .ToListAsync(cancellationToken);
 
         var items = entities
-            .Select(ToListItem)
+            .Select(entity => ToListItem(entity, baseUrl))
             .ToList();
 
         return new PagedShortUrlResponse(items, page, pageSize, totalCount, totalPages);
@@ -191,6 +193,7 @@ public sealed class ShortUrlService : IShortUrlService
         string originalUrl,
         DateTime? expiresAt,
         int? ownerId,
+        string? baseUrl,
         CancellationToken cancellationToken)
     {
         if (await _db.ShortUrls.AnyAsync(x => x.ShortCode == alias, cancellationToken))
@@ -209,13 +212,14 @@ public sealed class ShortUrlService : IShortUrlService
             return CreateShortUrlResult.AliasConflict();
         }
 
-        return CreateShortUrlResult.Created(ToResponse(entity));
+        return CreateShortUrlResult.Created(ToResponse(entity, baseUrl));
     }
 
     private async Task<CreateShortUrlResult> CreateWithGeneratedCodeAsync(
         string originalUrl,
         DateTime? expiresAt,
         int? ownerId,
+        string? baseUrl,
         CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < MaxCodeGenerationAttempts; attempt++)
@@ -230,7 +234,7 @@ public sealed class ShortUrlService : IShortUrlService
             try
             {
                 await _db.SaveChangesAsync(cancellationToken);
-                return CreateShortUrlResult.Created(ToResponse(entity));
+                return CreateShortUrlResult.Created(ToResponse(entity, baseUrl));
             }
             catch (DbUpdateException)
             {
@@ -254,20 +258,28 @@ public sealed class ShortUrlService : IShortUrlService
             OwnerId = ownerId
         };
 
-    private ShortUrlResponse ToResponse(ShortUrlEntity entity) =>
-        new(entity.ShortCode, BuildShortUrl(entity.ShortCode), entity.ExpiresAt);
+    private ShortUrlResponse ToResponse(ShortUrlEntity entity, string? baseUrl) =>
+        new(entity.ShortCode, BuildShortUrl(entity.ShortCode, baseUrl), entity.ExpiresAt);
 
-    private ShortUrlListItemResponse ToListItem(ShortUrlEntity entity) =>
+    private ShortUrlListItemResponse ToListItem(ShortUrlEntity entity, string? baseUrl) =>
         new(
             entity.ShortCode,
-            BuildShortUrl(entity.ShortCode),
+            BuildShortUrl(entity.ShortCode, baseUrl),
             entity.OriginalUrl,
             entity.CreatedAt,
             entity.ExpiresAt,
             entity.ClickCount);
 
-    private string BuildShortUrl(string shortCode) =>
-        $"{_options.BaseUrl.TrimEnd('/')}/{shortCode}";
+    private string BuildShortUrl(string shortCode, string? requestBaseUrl)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(requestBaseUrl)
+            ? _options.BaseUrl
+            : requestBaseUrl;
+
+        return string.IsNullOrWhiteSpace(baseUrl)
+            ? $"/{shortCode}"
+            : $"{baseUrl.TrimEnd('/')}/{shortCode}";
+    }
 
     private DateTime? ResolveExpiry(int? expiresInDays)
     {

@@ -8,4 +8,4 @@ WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "ShortUrl.Api.dll"]
+ENTRYPOINT ["/bin/sh", "-c", "if [ -n \"$PORT\" ]; then export ASPNETCORE_URLS=\"http://+:$PORT\"; fi; exec dotnet ShortUrl.Api.dll"]

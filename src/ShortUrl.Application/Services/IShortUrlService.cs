@@ -7,6 +7,7 @@ public interface IShortUrlService
     Task<CreateShortUrlResult> CreateAsync(
         CreateShortUrlRequest request,
         int? ownerId = null,
+        string? baseUrl = null,
         CancellationToken cancellationToken = default);
 
     Task<GetShortUrlResult> GetOriginalAsync(
@@ -21,6 +22,7 @@ public interface IShortUrlService
         int userId,
         int page,
         int pageSize,
+        string? baseUrl = null,
         CancellationToken cancellationToken = default);
 
     Task<DeleteShortUrlResult> DeleteAsync(

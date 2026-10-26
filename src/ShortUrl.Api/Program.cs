@@ -3,11 +3,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using ShortUrl.Api.Configuration;
 using ShortUrl.Api.Errors;
 using ShortUrl.Application.Options;
 using ShortUrl.Application.Services;
@@ -197,9 +199,12 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services
     .AddHealthChecks()
-    .AddDbContextCheck<AppDbContext>("database");
+    .AddDbContextCheck<AppDbContext>("database", tags: new[] { "ready" });
 
 var app = builder.Build();
+
+var swaggerEnabled = app.Configuration.GetValue<bool?>("Swagger:Enabled")
+    ?? app.Environment.IsDevelopment();
 
 if (generatedDevelopmentKey)
 {
@@ -213,19 +218,27 @@ using (var scope = app.Services.CreateScope())
     MigrateDatabase(db);
 }
 
+app.UseForwardedHeaders(ForwardedHeadersSetup.CreateOptions());
 app.UseExceptionHandler();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 app.MapControllers();
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready")
+});
 
 app.Run();
 

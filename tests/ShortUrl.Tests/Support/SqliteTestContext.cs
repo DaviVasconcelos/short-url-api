@@ -24,7 +24,7 @@ public sealed class SqliteTestContext : IDisposable
         Db = new AppDbContext(dbOptions);
         Db.Database.EnsureCreated();
 
-        Options = new ShortUrlOptions();
+        Options = new ShortUrlOptions { BaseUrl = "https://short.test" };
         configure?.Invoke(Options);
 
         Cache = new MemoryCache(new MemoryCacheOptions());

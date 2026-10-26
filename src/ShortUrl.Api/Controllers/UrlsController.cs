@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using ShortUrl.Api.Extensions;
 using ShortUrl.Api.Filters;
 using ShortUrl.Application.Dtos;
+using ShortUrl.Application.Options;
 using ShortUrl.Application.Services;
 
 namespace ShortUrl.Api.Controllers;
@@ -18,10 +19,12 @@ public sealed class UrlsController : ControllerBase
     private const int MaxPageSize = 100;
 
     private readonly IShortUrlService _service;
+    private readonly ShortUrlOptions _options;
 
-    public UrlsController(IShortUrlService service)
+    public UrlsController(IShortUrlService service, ShortUrlOptions options)
     {
         _service = service;
+        _options = options;
     }
 
     /// <summary>Shortens a URL, optionally with a custom alias and expiration.</summary>
@@ -43,7 +46,11 @@ public sealed class UrlsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var ownerId = User.GetUserId();
-        var result = await _service.CreateAsync(request, ownerId, cancellationToken);
+        var result = await _service.CreateAsync(
+            request,
+            ownerId,
+            ResolveBaseUrl(),
+            cancellationToken);
 
         return result.Status switch
         {
@@ -95,6 +102,7 @@ public sealed class UrlsController : ControllerBase
             userId.Value,
             page,
             pageSize,
+            ResolveBaseUrl(),
             cancellationToken);
 
         return Ok(result);
@@ -143,5 +151,14 @@ public sealed class UrlsController : ControllerBase
             DeleteShortUrlStatus.NotFound => NotFound(),
             _ => StatusCode(StatusCodes.Status403Forbidden)
         };
+    }
+
+    private string ResolveBaseUrl()
+    {
+        var configured = _options.BaseUrl;
+
+        return string.IsNullOrWhiteSpace(configured)
+            ? Request.GetBaseUrl()
+            : configured;
     }
 }
