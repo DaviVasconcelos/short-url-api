@@ -123,6 +123,38 @@ public sealed class ShortUrlService : IShortUrlService
                 entity.ClickCount);
     }
 
+    public async Task<PagedShortUrlResponse> GetUserLinksAsync(
+        int userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var ownedLinks = _db.ShortUrls
+            .AsNoTracking()
+            .Where(x => x.OwnerId == userId);
+
+        var totalCount = await ownedLinks.CountAsync(cancellationToken);
+        var totalPages = totalCount == 0
+            ? 0
+            : (int)((totalCount + (long)pageSize - 1) / pageSize);
+
+        var skip = (long)(page - 1) * pageSize;
+        var entities = skip >= int.MaxValue
+            ? new List<ShortUrlEntity>()
+            : await ownedLinks
+                .OrderByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.Id)
+                .Skip((int)skip)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+        var items = entities
+            .Select(ToListItem)
+            .ToList();
+
+        return new PagedShortUrlResponse(items, page, pageSize, totalCount, totalPages);
+    }
+
     public async Task<DeleteShortUrlResult> DeleteAsync(
         string shortCode,
         int? userId = null,
@@ -223,7 +255,19 @@ public sealed class ShortUrlService : IShortUrlService
         };
 
     private ShortUrlResponse ToResponse(ShortUrlEntity entity) =>
-        new(entity.ShortCode, $"{_options.BaseUrl.TrimEnd('/')}/{entity.ShortCode}", entity.ExpiresAt);
+        new(entity.ShortCode, BuildShortUrl(entity.ShortCode), entity.ExpiresAt);
+
+    private ShortUrlListItemResponse ToListItem(ShortUrlEntity entity) =>
+        new(
+            entity.ShortCode,
+            BuildShortUrl(entity.ShortCode),
+            entity.OriginalUrl,
+            entity.CreatedAt,
+            entity.ExpiresAt,
+            entity.ClickCount);
+
+    private string BuildShortUrl(string shortCode) =>
+        $"{_options.BaseUrl.TrimEnd('/')}/{shortCode}";
 
     private DateTime? ResolveExpiry(int? expiresInDays)
     {

@@ -242,6 +242,193 @@ public sealed class ShortUrlServiceTests
         Assert.Equal(GetShortUrlStatus.NotFound, result.Status);
     }
 
+    [Fact]
+    public async Task GetUserLinksAsync_ReturnsOnlyOwnedLinksIncludingExpired()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var other = await AddUserAsync(ctx, "other@example.com");
+        var now = DateTime.UtcNow;
+
+        ctx.Db.ShortUrls.AddRange(
+            new ShortUrlEntity
+            {
+                ShortCode = "owned-active",
+                OriginalUrl = "https://example.com/active",
+                OwnerId = owner.Id,
+                CreatedAt = now.AddMinutes(-1)
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "owned-expired",
+                OriginalUrl = "https://example.com/expired",
+                OwnerId = owner.Id,
+                CreatedAt = now.AddMinutes(-2),
+                ExpiresAt = now.AddMinutes(-1)
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "other-link",
+                OriginalUrl = "https://example.com/other",
+                OwnerId = other.Id,
+                CreatedAt = now
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "anon-link",
+                OriginalUrl = "https://example.com/anonymous",
+                CreatedAt = now
+            });
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 1, 20);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(
+            new[] { "owned-active", "owned-expired" },
+            result.Items.Select(x => x.ShortCode).ToArray());
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_OrdersByCreatedAtDescendingThenByIdDescending()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var sameTime = DateTime.UtcNow.AddMinutes(-5);
+
+        ctx.Db.ShortUrls.AddRange(
+            new ShortUrlEntity
+            {
+                ShortCode = "tie-first",
+                OriginalUrl = "https://example.com/tie-first",
+                OwnerId = owner.Id,
+                CreatedAt = sameTime
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "newest",
+                OriginalUrl = "https://example.com/newest",
+                OwnerId = owner.Id,
+                CreatedAt = sameTime.AddMinutes(1)
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "tie-second",
+                OriginalUrl = "https://example.com/tie-second",
+                OwnerId = owner.Id,
+                CreatedAt = sameTime
+            },
+            new ShortUrlEntity
+            {
+                ShortCode = "oldest",
+                OriginalUrl = "https://example.com/oldest",
+                OwnerId = owner.Id,
+                CreatedAt = sameTime.AddMinutes(-1)
+            });
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 1, 20);
+
+        Assert.Equal(
+            new[] { "newest", "tie-second", "tie-first", "oldest" },
+            result.Items.Select(x => x.ShortCode).ToArray());
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_ReturnsRequestedPageWithMetadata()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var now = DateTime.UtcNow;
+
+        for (var i = 0; i < 5; i++)
+        {
+            ctx.Db.ShortUrls.Add(new ShortUrlEntity
+            {
+                ShortCode = $"link{i}",
+                OriginalUrl = $"https://example.com/{i}",
+                OwnerId = owner.Id,
+                CreatedAt = now.AddMinutes(-i)
+            });
+        }
+
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 2, 2);
+
+        Assert.Equal(2, result.Page);
+        Assert.Equal(2, result.PageSize);
+        Assert.Equal(5, result.TotalCount);
+        Assert.Equal(3, result.TotalPages);
+        Assert.Equal(
+            new[] { "link2", "link3" },
+            result.Items.Select(x => x.ShortCode).ToArray());
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_WhenPageIsBeyondLast_ReturnsEmptyItems()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        ctx.Db.ShortUrls.Add(new ShortUrlEntity
+        {
+            ShortCode = "only-link",
+            OriginalUrl = "https://example.com/only",
+            OwnerId = owner.Id
+        });
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 5, 2);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(5, result.Page);
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(1, result.TotalPages);
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_WhenUserHasNoLinks_ReturnsEmptyPage()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 1, 20);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        Assert.Equal(0, result.TotalPages);
+    }
+
+    [Fact]
+    public async Task GetUserLinksAsync_MapsListItemFields()
+    {
+        using var ctx = new SqliteTestContext();
+        var owner = await AddUserAsync(ctx, "owner@example.com");
+        var createdAt = DateTime.UtcNow.AddMinutes(-3);
+        var expiresAt = DateTime.UtcNow.AddDays(7);
+
+        ctx.Db.ShortUrls.Add(new ShortUrlEntity
+        {
+            ShortCode = "mapped-link",
+            OriginalUrl = "https://example.com/mapped",
+            OwnerId = owner.Id,
+            CreatedAt = createdAt,
+            ExpiresAt = expiresAt,
+            ClickCount = 7
+        });
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.GetUserLinksAsync(owner.Id, 1, 20);
+        var item = Assert.Single(result.Items);
+
+        Assert.Equal("mapped-link", item.ShortCode);
+        Assert.Equal($"{ctx.Options.BaseUrl.TrimEnd('/')}/mapped-link", item.ShortUrl);
+        Assert.Equal("https://example.com/mapped", item.OriginalUrl);
+        Assert.Equal(createdAt, item.CreatedAt);
+        Assert.Equal(expiresAt, item.ExpiresAt);
+        Assert.Equal(7L, item.ClickCount);
+    }
+
     private static async Task<Domain.User> AddUserAsync(
         SqliteTestContext ctx,
         string email)

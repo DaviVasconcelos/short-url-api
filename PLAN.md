@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-22):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a, 3a, 3b e 3c concluídas** (61 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT e delete protegido). Próxima entrega: **3d**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
+> **Status (2026-10-26):** Fases 0-7 concluídas e corte enxuto em andamento — **0a, 1a, 3a, 3b, 3c e 3d concluídas** (71 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido e listagem paginada). Próxima entrega: **4a**. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 — Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -309,9 +309,9 @@ Content-Type: application/json
 | **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | **Feito** | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
 |  | **3b** register/login/me + JWT + 401 | **Feito** | Fluxo de login e `me` funcionando; Swagger com Bearer; ownership concluído na 3c | 3a |
 |  | **3c** Ownership no create/delete + política de anônimos | **Feito** | Dono deleta (`204`); sem token `401`; não-dono e link anônimo recebem `403`; código ausente `404` | 3b |
-|  | **3d** `GET /api/urls` paginado | **Ativo** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
+|  | **3d** `GET /api/urls` paginado | **Feito** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
 |  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
-| **4. Deploy** | **4a** Container readiness | **Pendente** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
+| **4. Deploy** | **4a** Container readiness | **Ativo** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
 |  | **4b** Render + Neon | **Pendente** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
@@ -326,7 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a, 3b e 3c concluídas em 2026-10-22.** A ordem restante começa em **3d**.
+- **0a, 1a, 3a, 3b, 3c e 3d concluídas.** A 3d foi concluída em 2026-10-26; a ordem restante começa em **4a**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 3c** para que a demo pública já nasça com `DELETE` protegido.
 - Se for necessário validar o Render mais cedo, fazer 4a logo após 1a e publicar com `DELETE` desabilitado até 3c.
@@ -366,12 +366,12 @@ Content-Type: application/json
 
 - [ ] PostgreSQL em produção (Neon) com migrations separadas.
 - [x] Auth JWT + ownership.
-- [ ] Listagem paginada dos links do usuário.
+- [x] Listagem paginada dos links do usuário.
 - [ ] Deploy público no Render Free funcionando.
 - [ ] README/AGENTS/PLAN sincronizados com URL, arquitetura e limitações.
 - [ ] CI verde com build, testes e Docker.
 - [ ] Swagger acessível na demo pública.
-- [x] Testes cobrindo auth, ownership, create, redirect e delete.
+- [x] Testes cobrindo auth, ownership, create, redirect, delete e listagem paginada.
 
 ### 12.8 Fluxo de trabalho
 

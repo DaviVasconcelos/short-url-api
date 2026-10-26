@@ -52,6 +52,17 @@ Authorization: Bearer {{login.response.body.token}}
 
 { "url": "https://learn.microsoft.com/ef/core/", "customAlias": "ef-core", "expiresInDays": 7 }
 
+### List my links (expect 200)
+GET {{host}}/api/urls?page=1&pageSize=10
+Authorization: Bearer {{login.response.body.token}}
+
+### List without a token (expect 401)
+GET {{host}}/api/urls
+
+### List with invalid pagination (expect 400)
+GET {{host}}/api/urls?page=0&pageSize=101
+Authorization: Bearer {{login.response.body.token}}
+
 ### Redirect (expect 302; set code from the create response)
 GET {{host}}/{{create.response.body.shortCode}}
 Accept: text/html

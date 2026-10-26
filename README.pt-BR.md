@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-61%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -17,13 +17,14 @@ Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Co
 - `POST /api/auth/login` — autentica e devolve um JWT
 - `GET /api/auth/me` — retorna o usuário autenticado (Bearer token)
 - `POST /api/urls` — encurta uma URL (suporta alias customizado + expiração; Bearer token opcional define o dono)
+- `GET /api/urls` — lista paginada dos links do usuário autenticado
 - `GET /{code}` — redirect 302 para a URL original + contagem de cliques
 - `GET /api/urls/{code}` — estatísticas (URL original, createdAt, expiresAt, clickCount)
 - `DELETE /api/urls/{code}` — remove uma URL curta com dono (Bearer token obrigatório)
 - Validação (apenas http/https, máx. 2048 chars), 409 em conflito de alias, 410 em link expirado
 - Cache em memória no caminho quente de redirect, rate limiting de janela fixa na criação e auth
 - Auth JWT (HS256, 60 min), `PasswordHasher<User>`, emails normalizados
-- Ownership: creates autenticados ganham dono; só o dono deleta, e links anônimos não podem ser deletados pela API
+- Ownership: creates autenticados ganham dono; só o dono lista ou deleta, e links anônimos não podem ser deletados pela API
 - Swagger com Bearer auth, HealthChecks (`/health`), Docker, CI no GitHub Actions, testes xUnit
 
 ## Stack
@@ -103,11 +104,11 @@ dotnet test ShortUrl.slnx
 
 ## Testes
 
-**61 testes xUnit** em quatro áreas:
+**71 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
-- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401 e fluxos de ownership `401`/`403`/`404`. Um teste dedicado cobre o rate limit de auth.
+- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404` e paginação autenticada. Um teste dedicado cobre o rate limit de auth.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -118,12 +119,13 @@ dotnet test ShortUrl.slnx
 | POST | `/api/auth/login` | `200 OK` | Autentica e devolve JWT |
 | GET | `/api/auth/me` | `200 OK` | Usuário autenticado (Bearer token) |
 | POST | `/api/urls` | `201 Created` | Encurta a URL (Bearer token opcional define o dono) |
+| GET | `/api/urls` | `200 OK` | Lista paginada dos links do usuário autenticado |
 | GET | `/{code}` | `302 Found` | Redirect |
 | GET | `/api/urls/{code}` | `200 OK` | Estatísticas |
 | DELETE | `/api/urls/{code}` | `204 No Content` | Remove URL com dono (Bearer token obrigatório) |
 | GET | `/health` | `200 OK` | Health check |
 
-`POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
+`POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `GET /api/urls` exige Bearer token e retorna apenas os links do chamador; `page` tem padrão `1`, `pageSize` tem padrão `20` (máximo `100`), e links expirados continuam listados até serem deletados. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
 
 Exemplo:
 
@@ -142,7 +144,33 @@ Content-Type: application/json
 }
 ```
 
-Códigos de erro: `400` URL/email/senha inválidos, `401` credenciais ou token ausente/inválido, `403` não-dono ou link anônimo no delete, `404` não encontrado, `409` alias ou email em uso, `410` expirado, `429` rate limited.
+Liste seus links:
+
+```http
+GET /api/urls?page=1&pageSize=20
+Authorization: Bearer <jwt>
+```
+
+```json
+{
+  "items": [
+    {
+      "shortCode": "aB3x9Q",
+      "shortUrl": "http://localhost:5000/aB3x9Q",
+      "originalUrl": "https://dotnet.microsoft.com/en-us/learn",
+      "createdAt": "2026-10-26T12:00:00Z",
+      "expiresAt": "2026-11-25T12:00:00Z",
+      "clickCount": 12
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 1,
+  "totalPages": 1
+}
+```
+
+Códigos de erro: `400` URL/email/senha ou paginação inválidos, `401` credenciais ou token ausente/inválido, `403` não-dono ou link anônimo no delete, `404` não encontrado, `409` alias ou email em uso, `410` expirado, `429` rate limited.
 
 Exemplo de auth:
 
@@ -161,7 +189,7 @@ Content-Type: application/json
 }
 ```
 
-O register também autentica o usuário. Envie o token como `Authorization: Bearer <jwt>` para endpoints protegidos como `/api/auth/me` e para `POST`/`DELETE /api/urls`. Criar com token define o dono do link; só o dono pode deletá-lo. Os tokens duram 60 minutos por padrão; refresh tokens estão fora do escopo.
+O register também autentica o usuário. Envie o token como `Authorization: Bearer <jwt>` para endpoints protegidos como `/api/auth/me` e para `POST`/`GET`/`DELETE /api/urls`. Criar com token define o dono do link; só o dono pode listá-lo ou deletá-lo. Os tokens duram 60 minutos por padrão; refresh tokens estão fora do escopo.
 
 ## Estrutura do projeto
 
@@ -179,7 +207,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 61 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 71 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.
@@ -258,7 +286,7 @@ Veja `PLAN.md` §12 para a divisão detalhada das fases.
 - [x] Provider PostgreSQL + migrations (produção)
 - [x] Auth JWT (`register`, `login`, `me`) com Bearer no Swagger
 - [x] Links por usuário + delete protegido
-- [ ] Listagem paginada dos links do usuário autenticado
+- [x] Listagem paginada dos links do usuário autenticado
 - [ ] Deploy de demo pública (Render Free + Neon)
 - [ ] Documentação, testes e runbook de deploy
 

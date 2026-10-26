@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -12,6 +13,10 @@ namespace ShortUrl.Api.Controllers;
 [Route("api/urls")]
 public sealed class UrlsController : ControllerBase
 {
+    private const int DefaultPage = 1;
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 100;
+
     private readonly IShortUrlService _service;
 
     public UrlsController(IShortUrlService service)
@@ -62,6 +67,37 @@ public sealed class UrlsController : ControllerBase
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid URL"))
         };
+    }
+
+    /// <summary>Lists short URLs owned by the authenticated user.</summary>
+    /// <param name="page">Page number, starting at 1.</param>
+    /// <param name="pageSize">Page size, between 1 and 100.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <response code="200">Page of short URLs returned.</response>
+    /// <response code="400"><c>page</c> or <c>pageSize</c> is invalid.</response>
+    /// <response code="401">The token is missing or invalid.</response>
+    [HttpGet]
+    [Authorize]
+    [ProducesResponseType(typeof(PagedShortUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> List(
+        [FromQuery, Range(1, int.MaxValue)] int page = DefaultPage,
+        [FromQuery, Range(1, MaxPageSize)] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+
+        if (userId is null)
+            return Unauthorized();
+
+        var result = await _service.GetUserLinksAsync(
+            userId.Value,
+            page,
+            pageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     /// <summary>Returns statistics for a short URL.</summary>

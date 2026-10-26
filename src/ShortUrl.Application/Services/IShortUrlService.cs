@@ -17,6 +17,12 @@ public interface IShortUrlService
         string shortCode,
         CancellationToken cancellationToken = default);
 
+    Task<PagedShortUrlResponse> GetUserLinksAsync(
+        int userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
     Task<DeleteShortUrlResult> DeleteAsync(
         string shortCode,
         int? userId = null,
