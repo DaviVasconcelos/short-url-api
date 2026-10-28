@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-89%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -102,19 +102,25 @@ docker run -p 5000:8080 \
 
 O container roda em `Production`, então `Jwt__Key` é obrigatória e precisa ter pelo menos 32 bytes. Use um secret real fora de demos locais. Ele escuta em `8080` por padrão; quando `PORT` está definida (como no Render), escuta nessa porta. O banco SQLite fica dentro do container, então monte um volume (`-v shorturl-data:/app`) para persistir. O Swagger fica desabilitado em Production a menos que `Swagger__Enabled=true`. Quando `ShortUrl__BaseUrl` não está definida, os links gerados usam o scheme e o host da requisição (respeitando `X-Forwarded-Proto`), então o deploy funciona sem configuração extra.
 
-Rodar os testes:
+## Deploy
+
+A demo pública roda em **Render Free** (Docker) com **Neon Free** (PostgreSQL). O serviço está declarado em [`render.yaml`](render.yaml) e o passo a passo — projeto no Neon, secrets no Render, smoke test, cold start e rollback — está em [`docs/deploy.md`](docs/deploy.md) (em inglês).
+
+A configuração de produção vive apenas em variáveis de ambiente (`Database__Provider`, `ConnectionStrings__Postgres`, `Jwt__Key`, `Swagger__Enabled`); nenhum secret é versionado. As migrations são aplicadas no startup, então o primeiro deploy não precisa de `dotnet ef database update` manual.
+
+## Testes
+
+Rodar a suíte:
 
 ```bash
 dotnet test ShortUrl.slnx
 ```
 
-## Testes
-
-**80 testes xUnit** em quatro áreas:
+**89 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
 - `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders` e a base URL derivada da requisição. Um teste dedicado cobre o rate limit de auth.
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição e a política configurável de retry das migrations. Um teste dedicado cobre o rate limit de auth.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -205,7 +211,9 @@ ShortUrl.slnx               # Solution (formato XML novo, SDK 10 / VS 2022 17.12
 global.json                 # Fixa o SDK .NET 10 para tooling; runtime continua net8.0
 Dockerfile                  # Build multi-stage (sdk:8.0 -> aspnet:8.0)
 .dockerignore
+render.yaml                 # Blueprint do Render para a demo pública (Docker + Neon)
 .github/workflows/ci.yml    # restore -> build -> test (+ docker build)
+docs/deploy.md              # Runbook de deploy (Neon, Render, smoke test, free tier)
 docs/images/swagger.png     # Print do Swagger UI usado neste README
 src/
   ShortUrl.Domain/          # Entidades ShortUrl + User, porta ICodeGenerator (sem dependências)
@@ -214,7 +222,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 80 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 89 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.

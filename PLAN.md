@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-26):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas** (80 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido, listagem paginada e container readiness). Próxima entrega: **4b** (deploy no Render + Neon). As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-28):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas** (89 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido, listagem paginada e container readiness). **4b em andamento:** `render.yaml`, retry de migrations logado e `docs/deploy.md` prontos; faltam o projeto Neon, o serviço no Render e o smoke test público. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -312,7 +312,7 @@ Content-Type: application/json
 |  | **3d** `GET /api/urls` paginado | **Feito** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
 |  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
 | **4. Deploy** | **4a** Container readiness | **Feito** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
-|  | **4b** Render + Neon | **Pendente** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
+|  | **4b** Render + Neon | **Em andamento** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
 | **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | **Adiado** | Apaga só expirados, em lotes, de forma idempotente | 1a |
@@ -348,7 +348,7 @@ Content-Type: application/json
   ```text
   Host=...neon.tech;Database=neondb;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true;Maximum Pool Size=20;Timeout=30
   ```
-- **Render:** web service Docker Free, região `virginia`, `healthCheckPath: /health/live`, `autoDeployTrigger: checksPass`.
+- **Render:** web service Docker Free, região `virginia`, `healthCheckPath: /health/live`, `autoDeployTrigger: checksPass`. O serviço é declarado em `render.yaml` (Blueprint), não criado à mão no dashboard.
 - **Secrets no Render:** `ConnectionStrings__Postgres` com `sync: false`; `Jwt__Key` com `generateValue: true`.
 - **Variáveis no Render:** `Database__Provider=Postgres` e `Swagger__Enabled=true` (o Swagger fica desligado em Production por padrão). `ShortUrl__BaseUrl` é opcional; sem ela, os links usam o host público da requisição.
 - **Primeiro acesso após idle:** cold start de ~1 min; não usar keep-alive, pois consumiria as 750 h/mês.
