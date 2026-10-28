@@ -233,6 +233,22 @@ if (swaggerEnabled)
 }
 
 app.MapControllers();
+app.MapGet("/", () => swaggerEnabled
+        ? Results.Redirect("/swagger")
+        : Results.Ok(new
+        {
+            name = "Short URL API",
+            swagger = "/swagger",
+            health = "/health/live",
+            endpoints = new[]
+            {
+                "/api/urls",
+                "/api/auth/register",
+                "/api/auth/login",
+                "/api/auth/me"
+            }
+        }))
+    .ExcludeFromDescription();
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = _ => false
