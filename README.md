@@ -9,6 +9,8 @@
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
 
+> **Live demo:** <https://shorturl-davi.onrender.com> · [Swagger](https://shorturl-davi.onrender.com/swagger). It runs on free tiers, so the first request after ~15 minutes of inactivity can take up to a minute while Render and Neon wake up.
+
 > **SDK vs runtime:** tooling uses **.NET 10 SDK + `ShortUrl.slnx`** (requires VS 2022 17.12+), but the code runs on **.NET 8 LTS** (`<TargetFramework>net8.0</TargetFramework>` in every project).
 
 ## Features
@@ -104,7 +106,7 @@ The container runs in `Production`, so `Jwt__Key` is required and must be at lea
 
 ## Deploy
 
-The public demo runs on **Render Free** (Docker) with **Neon Free** PostgreSQL. The service is declared in [`render.yaml`](render.yaml) and the step-by-step runbook — Neon project, Render secrets, smoke test, cold-start behavior and rollback — is in [`docs/deploy.md`](docs/deploy.md).
+The public demo is live at <https://shorturl-davi.onrender.com>, running on **Render Free** (Docker) with **Neon Free** PostgreSQL. The service is declared in [`render.yaml`](render.yaml) and the step-by-step runbook — Neon project, Render secrets, smoke test, cold-start behavior and rollback — is in [`docs/deploy.md`](docs/deploy.md).
 
 Production configuration lives only in environment variables (`Database__Provider`, `ConnectionStrings__Postgres`, `Jwt__Key`, `Swagger__Enabled`); no secret is committed. Migrations apply on startup, so the first deploy needs no manual `dotnet ef database update`.
 
@@ -307,8 +309,8 @@ See `PLAN.md` §12 for the detailed phase breakdown.
 - [x] Per-user ownership + protected delete
 - [x] Paginated listing of the authenticated user's links
 - [x] Container readiness (`$PORT`, liveness/readiness probes, forwarded headers, Swagger flag, base URL fallback)
-- [ ] Public demo deploy (Render Free + Neon)
-- [ ] Docs, tests, and deploy runbook
+- [x] Public demo deploy (Render Free + Neon)
+- [x] Docs, tests, and deploy runbook
 
 **Stretch**
 - [ ] Redis distributed cache

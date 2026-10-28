@@ -9,6 +9,8 @@
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
 
+> **Demo pública:** <https://shorturl-davi.onrender.com> · [Swagger](https://shorturl-davi.onrender.com/swagger). Roda em free tier, então a primeira requisição depois de ~15 minutos ocioso pode levar até um minuto enquanto Render e Neon acordam.
+
 > **SDK vs runtime:** o tooling usa **.NET 10 SDK + `ShortUrl.slnx`** (requer VS 2022 17.12+), mas o código roda em **.NET 8 LTS** (`<TargetFramework>net8.0</TargetFramework>` em todos os projetos).
 
 ## Funcionalidades
@@ -104,7 +106,7 @@ O container roda em `Production`, então `Jwt__Key` é obrigatória e precisa te
 
 ## Deploy
 
-A demo pública roda em **Render Free** (Docker) com **Neon Free** (PostgreSQL). O serviço está declarado em [`render.yaml`](render.yaml) e o passo a passo — projeto no Neon, secrets no Render, smoke test, cold start e rollback — está em [`docs/deploy.md`](docs/deploy.md) (em inglês).
+A demo pública está no ar em <https://shorturl-davi.onrender.com>, rodando em **Render Free** (Docker) com **Neon Free** (PostgreSQL). O serviço está declarado em [`render.yaml`](render.yaml) e o passo a passo — projeto no Neon, secrets no Render, smoke test, cold start e rollback — está em [`docs/deploy.md`](docs/deploy.md) (em inglês).
 
 A configuração de produção vive apenas em variáveis de ambiente (`Database__Provider`, `ConnectionStrings__Postgres`, `Jwt__Key`, `Swagger__Enabled`); nenhum secret é versionado. As migrations são aplicadas no startup, então o primeiro deploy não precisa de `dotnet ef database update` manual.
 
@@ -307,8 +309,8 @@ Veja `PLAN.md` §12 para a divisão detalhada das fases.
 - [x] Links por usuário + delete protegido
 - [x] Listagem paginada dos links do usuário autenticado
 - [x] Container readiness (`$PORT`, probes de liveness/readiness, forwarded headers, flag do Swagger, fallback de base URL)
-- [ ] Deploy de demo pública (Render Free + Neon)
-- [ ] Documentação, testes e runbook de deploy
+- [x] Deploy de demo pública (Render Free + Neon)
+- [x] Documentação, testes e runbook de deploy
 
 **Stretch**
 - [ ] Cache distribuído com Redis

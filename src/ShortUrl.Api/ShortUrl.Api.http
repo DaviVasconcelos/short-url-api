@@ -1,4 +1,6 @@
 @host = http://localhost:5000
+# Public demo (free tier: first request after idle can take ~1 min)
+# @host = https://shorturl-davi.onrender.com
 
 ### Register (expect 201; auto-login)
 # @name register

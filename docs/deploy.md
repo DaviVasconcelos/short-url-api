@@ -11,6 +11,8 @@ Production runs on **Render Free** (Docker web service) with **Neon Free** (Post
 | Migrations | Applied on startup by `DatabaseMigrationRunner` |
 | CI gate | `autoDeployTrigger: checksPass` |
 
+> **Last verified:** 2026-10-28 — the deploy answered `200` on `/health/live`, `/health` and Swagger, created an anonymous link as `https://shorturl-davi.onrender.com/<code>`, redirected `302`, tracked the click, and returned `401`/`403`/`404` for the delete paths.
+
 ## Why a direct Neon connection
 
 Neon's pooled endpoint (`-pooler` hostname) is PgBouncer in **transaction mode**. Neon's own docs recommend a direct connection for schema migrations, `pg_dump`, and anything that depends on session state. Because this app applies migrations during startup, `ConnectionStrings__Postgres` must use the **direct** host — the one **without** `-pooler`.
@@ -75,6 +77,8 @@ Run against the public host after the first deploy. `check` values are status co
 | `GET /{code}` after a redeploy | `302` (data lives in Neon) |
 
 The `https://` check matters: if links come back as `http://`, `ForwardedHeaders` is not being applied and the bug is in the app, not in the Render configuration.
+
+Two rows are better run locally: the 31st-request `429` creates 30 throwaway links, and `410` cannot be produced through the API at all (`expiresInDays <= 0` means "never expires", which is covered by service tests). Use the local rehearsal below for both.
 
 ```bash
 HOST=https://shorturl-davi.onrender.com

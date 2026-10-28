@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-28):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas** (89 testes verdes; provider PostgreSQL com migrations separadas, schema de ownership, auth JWT, delete protegido, listagem paginada e container readiness). **4b em andamento:** `render.yaml`, retry de migrations logado e `docs/deploy.md` prontos; faltam o projeto Neon, o serviço no Render e o smoke test público. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-28):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d, 4a e 4b concluídas** (89 testes verdes; PostgreSQL em produção no Neon, auth JWT, ownership, listagem paginada, container readiness e demo pública em `https://shorturl-davi.onrender.com`). Próxima entrega: **7a** (consolidação de docs/ADRs). As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -286,7 +286,7 @@ Content-Type: application/json
 - **Escopo ativo:** PostgreSQL, auth JWT + ownership, listagem paginada, deploy e documentação/testes.
 - **Stretch:** Redis, cleanup de expirados e rate limit por usuário.
 - **Cortado:** SQL Server local (redundante com PostgreSQL) e Fly.io.
-- **Deploy:** Render Free Web Service + Neon Free Postgres. Custo **$0** e sem cartão de crédito.
+- **Deploy:** Render Free Web Service + Neon Free Postgres. Custo **$0** e sem cartão de crédito. Demo: `https://shorturl-davi.onrender.com` (Blueprint em `render.yaml`).
 - **Banco local/testes:** SQLite (mantém a suíte rápida e sem dependência externa).
 - **Banco de produção:** PostgreSQL (Neon).
 - **Auth:** JWT + ownership. Criação anônima continua; link autenticado ganha dono; `DELETE` exige o dono.
@@ -312,7 +312,7 @@ Content-Type: application/json
 |  | **3d** `GET /api/urls` paginado | **Feito** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
 |  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
 | **4. Deploy** | **4a** Container readiness | **Feito** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
-|  | **4b** Render + Neon | **Em andamento** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
+|  | **4b** Render + Neon | **Feito** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
 | **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | **Adiado** | Apaga só expirados, em lotes, de forma idempotente | 1a |
@@ -326,7 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a, 3b, 3c, 3d e 4a concluídas.** A 4a foi concluída em 2026-10-26; a ordem restante começa em **4b**.
+- **0a, 1a, 3a, 3b, 3c, 3d, 4a e 4b concluídas.** A 4b foi concluída em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a ordem restante começa em **7a**.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
@@ -364,13 +364,13 @@ Content-Type: application/json
 
 ### 12.7 Definição de pronto do corte enxuto
 
-- [ ] PostgreSQL em produção (Neon) com migrations separadas.
+- [x] PostgreSQL em produção (Neon) com migrations separadas.
 - [x] Auth JWT + ownership.
 - [x] Listagem paginada dos links do usuário.
-- [ ] Deploy público no Render Free funcionando.
-- [ ] README/AGENTS/PLAN sincronizados com URL, arquitetura e limitações.
-- [ ] CI verde com build, testes e Docker.
-- [ ] Swagger acessível na demo pública.
+- [x] Deploy público no Render Free funcionando.
+- [x] README/AGENTS/PLAN sincronizados com URL, arquitetura e limitações.
+- [x] CI verde com build, testes e Docker.
+- [x] Swagger acessível na demo pública.
 - [x] Testes cobrindo auth, ownership, create, redirect, delete e listagem paginada.
 
 ### 12.8 Fluxo de trabalho
