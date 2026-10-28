@@ -1,0 +1,26 @@
+# Blueprint for the public demo: Render Free (Docker) + Neon Free (PostgreSQL).
+# Runbook: docs/deploy.md
+services:
+  - type: web
+    name: shorturl-davi
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Liveness only: a suspended Neon compute must not fail the deploy.
+    healthCheckPath: /health/live
+    # Deploy only after the CI workflow (restore/build/test + docker build) passes.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: Database__Provider
+        value: Postgres
+      # Set in the Render dashboard; never committed.
+      - key: ConnectionStrings__Postgres
+        sync: false
+      - key: Jwt__Key
+        generateValue: true
+      - key: Swagger__Enabled
+        value: "true"
+      # ShortUrl__BaseUrl is intentionally unset: links derive from the request host,
+      # which also exercises the X-Forwarded-Proto handling end to end.

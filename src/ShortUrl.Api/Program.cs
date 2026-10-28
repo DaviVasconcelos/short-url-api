@@ -212,10 +212,12 @@ if (generatedDevelopmentKey)
         "Jwt:Key was not configured; using an ephemeral development key. Tokens will be invalidated on restart.");
 }
 
+var migrationOptions = DatabaseMigrationOptions.FromConfiguration(app.Configuration);
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    MigrateDatabase(db);
+    DatabaseMigrationRunner.Run(() => db.Database.Migrate(), migrationOptions, app.Logger);
 }
 
 app.UseForwardedHeaders(ForwardedHeadersSetup.CreateOptions());
@@ -241,23 +243,5 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 });
 
 app.Run();
-
-static void MigrateDatabase(AppDbContext db)
-{
-    const int maxAttempts = 5;
-
-    for (var attempt = 1; ; attempt++)
-    {
-        try
-        {
-            db.Database.Migrate();
-            return;
-        }
-        catch (Exception) when (attempt < maxAttempts)
-        {
-            Thread.Sleep(TimeSpan.FromSeconds(2));
-        }
-    }
-}
 
 public partial class Program;
