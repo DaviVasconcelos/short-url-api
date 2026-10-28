@@ -111,6 +111,9 @@ GET {{host}}/health/live
 ### Readiness (expect 200, checks the database)
 GET {{host}}/health
 
+### Root landing (expect 302 to /swagger; JSON index when Swagger is disabled)
+GET {{host}}/
+
 ### Invalid URL (expect 400)
 POST {{host}}/api/urls
 Content-Type: application/json

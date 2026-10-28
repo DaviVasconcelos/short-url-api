@@ -11,7 +11,7 @@ Production runs on **Render Free** (Docker web service) with **Neon Free** (Post
 | Migrations | Applied on startup by `DatabaseMigrationRunner` |
 | CI gate | `autoDeployTrigger: checksPass` |
 
-> **Last verified:** 2026-10-28 — the deploy answered `200` on `/health/live`, `/health` and Swagger, created an anonymous link as `https://shorturl-davi.onrender.com/<code>`, redirected `302`, tracked the click, and returned `401`/`403`/`404` for the delete paths.
+> **Last verified:** 2026-10-28 — the deploy answered `200` on `/health/live`, `/health` and Swagger, created an anonymous link as `https://shorturl-davi.onrender.com/<code>`, redirected `302`, tracked the click, and returned `401`/`403`/`404` for the delete paths. `GET /` redirects to Swagger so the bare demo URL is usable.
 
 ## Why a direct Neon connection
 
@@ -61,6 +61,7 @@ Run against the public host after the first deploy. `check` values are status co
 |---|---|
 | `GET /health/live` | `200` |
 | `GET /health` | `200` (proves Neon is reachable) |
+| `GET /` | `302` to `/swagger` |
 | `GET /swagger/index.html` | `200` |
 | `POST /api/urls` (anonymous) | `201`, `shortUrl` starts with `https://` |
 | `GET /{code}` | `302` + correct `Location` |

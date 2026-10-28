@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-89%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -118,11 +118,11 @@ Rodar a suíte:
 dotnet test ShortUrl.slnx
 ```
 
-**89 testes xUnit** em quatro áreas:
+**91 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
 - `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição e a política configurável de retry das migrations. Um teste dedicado cobre o rate limit de auth.
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição, a política configurável de retry das migrations e a landing da raiz. Um teste dedicado cobre o rate limit de auth.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -139,6 +139,7 @@ dotnet test ShortUrl.slnx
 | DELETE | `/api/urls/{code}` | `204 No Content` | Remove URL com dono (Bearer token obrigatório) |
 | GET | `/health/live` | `200 OK` | Probe de liveness (sem dependências) |
 | GET | `/health` | `200 OK` | Probe de readiness (verifica o banco) |
+| GET | `/` | `302 Found` | Redireciona para o Swagger; devolve um índice JSON quando o Swagger está desligado |
 
 `POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `GET /api/urls` exige Bearer token e retorna apenas os links do chamador; `page` tem padrão `1`, `pageSize` tem padrão `20` (máximo `100`), e links expirados continuam listados até serem deletados. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
 
@@ -224,7 +225,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 89 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 91 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.
