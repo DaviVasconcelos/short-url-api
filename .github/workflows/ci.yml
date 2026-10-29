@@ -28,6 +28,9 @@ jobs:
       - name: Restore
         run: dotnet restore ShortUrl.slnx
 
+      - name: Verify formatting
+        run: dotnet format ShortUrl.slnx --verify-no-changes --no-restore
+
       - name: Build
         run: dotnet build ShortUrl.slnx --no-restore --configuration Release
 

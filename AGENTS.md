@@ -40,7 +40,7 @@ Short URL API — .NET 8 ASP.NET Core URL shortener, built as a portfolio projec
 
 ## Gotchas
 
-- `Directory.Build.props` promotes warnings to errors and `.editorconfig` drives `dotnet format`; `.gitattributes` normalizes every text file to LF (the Windows checkout follows it). Run `dotnet format ShortUrl.slnx --verify-no-changes` before committing — CI does not enforce it yet, but the tree is clean today, so keep it that way.
+- `Directory.Build.props` promotes warnings to errors and `.editorconfig` drives `dotnet format`; `.gitattributes` normalizes every text file to LF (the Windows checkout follows it). CI runs `dotnet format ShortUrl.slnx --verify-no-changes` in `build-test`, so format before committing.
 - `PostgresApiFactory` sets `Database:Provider` through `IWebHostBuilder.UseSetting`, not `ConfigureAppConfiguration`: `Program.cs` reads the provider before configuration callbacks are applied, so the latter silently leaves the app on SQLite.
 - Root namespace is `ShortUrl` and the domain entity is also `ShortUrl`, so unqualified `ShortUrl` is ambiguous. Follow the existing aliases: `using Domain = ShortUrl.Domain;` and `using ShortUrlEntity = ShortUrl.Domain.ShortUrl;`.
 - `infrastructure` vs docs are now aligned: Dockerfile + CI exist. If the README CI badge is red, check the workflow runs, not the docs.
