@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -118,11 +118,11 @@ Rodar a suíte:
 dotnet test ShortUrl.slnx
 ```
 
-**91 testes xUnit** em quatro áreas:
+**95 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
 - `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição, a política configurável de retry das migrations e a landing da raiz. Um teste dedicado cobre o rate limit de auth.
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição, a política configurável de retry das migrations e a landing da raiz. Um teste dedicado cobre o rate limit de auth. Quatro `PostgresApiTests` sobem a API contra um PostgreSQL real: aplicam as migrations PostgreSQL no startup e exercitam health, create → redirect → clique, listagem/delete com dono e stats. Eles só rodam quando `SHORTURL_TEST_POSTGRES` aponta para um banco (o job `postgres` da CI define) e são pulados caso contrário.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -215,7 +215,8 @@ global.json                 # Fixa o SDK .NET 10 para tooling; runtime continua 
 Dockerfile                  # Build multi-stage (sdk:8.0 -> aspnet:8.0)
 .dockerignore
 render.yaml                 # Blueprint do Render para a demo pública (Docker + Neon)
-.github/workflows/ci.yml    # restore -> build -> test (+ docker build)
+.github/workflows/ci.yml    # restore -> build -> test, job PostgreSQL, docker build
+.config/dotnet-tools.json   # dotnet-ef fixado, restaurado com `dotnet tool restore`
 GLOSSARY.md                 # Vocabulário do domínio (fonte única)
 docs/adr/                   # Architecture Decision Records (0001-0008)
 docs/deploy.md              # Runbook de deploy (Neon, Render, smoke test, free tier)
@@ -227,7 +228,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 91 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 95 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.

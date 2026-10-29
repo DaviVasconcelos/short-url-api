@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-29):** **Corte enxuto concluído** — 0a, 1a, 3a, 3b, 3c, 3d, 4a, 4b e **7a** entregues (91 testes verdes; PostgreSQL em produção no Neon, auth JWT, ownership, listagem paginada, container readiness, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/`). O que resta são apenas itens **stretch** (Redis, cleanup de expirados, rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-29):** **Corte enxuto concluído** — 0a, 1a, **1b**, 3a, 3b, 3c, 3d, 4a, 4b e **7a** entregues (**95 testes verdes**; PostgreSQL em produção no Neon e validado também na CI, auth JWT, ownership, listagem paginada, container readiness, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/`). O que resta são apenas itens **stretch** (Redis, cleanup de expirados, rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -303,7 +303,7 @@ Content-Type: application/json
 |---|---|---|---|---|
 | **0. Baseline** | **0a** Branch + suíte atual | **Feito** | `feat/roadmap-v2` criada; 22/22 testes verdes | — |
 | **1. PostgreSQL** | **1a** Provider + projeto de migrations + `InitialPostgres` | **Feito** | API sobe com `Database:Provider=Postgres` e aplica migration | 0a |
-|  | **1b** Compose local + job Postgres na CI + tool manifest | **Opcional rápido** | `dotnet ef database update` verde na CI | 1a |
+|  | **1b** Compose local + job Postgres na CI + tool manifest | **Feito** | `dotnet ef database update` verde na CI | 1a |
 | **2. Cache seam** | **2a** `IShortUrlCache` + `CachedShortUrl` + `DistributedShortUrlCache` | **Stretch** | Cache abstrato compila e é resolvido pela DI | 0a |
 |  | **2b** `ShortUrlService` + testes com cache abstrato | **Stretch** | 22 testes verdes; redirect continua funcionando | 2a |
 | **3. Auth** | **3a** `User`, hasher, `OwnerId` e migration | **Feito** | Schema novo aplicado; links existentes ficam com `OwnerId = null` | 1a |
@@ -326,8 +326,8 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a, 3b, 3c, 3d, 4a, 4b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com` e a 7a fechou em 2026-10-29, encerrando o corte enxuto. O que sobra é stretch.
-- **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
+- **0a, 1a, 1b, 3a, 3b, 3c, 3d, 4a, 4b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a 7a fechou em 2026-10-29, encerrando o corte enxuto, e a **1b** entrou logo depois como polimento.
+- **1b entregue** com `postgres:16` como service container no job `postgres` da CI, `dotnet-ef` fixado em `.config/dotnet-tools.json` (`dotnet tool restore`) e quatro `PostgresApiTests` opt-in via `SHORTURL_TEST_POSTGRES`. Não foi preciso compose local: o rehearsal usa `docker run postgres:16`.
 - **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
 - **2, 5, 6 e 3e são stretch/adiados**: só entram depois que o corte ativo estiver publicado.
