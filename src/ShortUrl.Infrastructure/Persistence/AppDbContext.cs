@@ -1,5 +1,5 @@
-using Domain = ShortUrl.Domain;
 using Microsoft.EntityFrameworkCore;
+using Domain = ShortUrl.Domain;
 
 namespace ShortUrl.Infrastructure.Persistence;
 

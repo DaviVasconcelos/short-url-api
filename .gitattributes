@@ -1,0 +1,13 @@
+# Normalize text files to LF in the repository and in every checkout.
+# Keeps Windows, Linux and the CI on the same bytes.
+* text=auto eol=lf
+
+# Binary assets must never be touched by the text filter.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.db-shm binary
+*.db-wal binary
