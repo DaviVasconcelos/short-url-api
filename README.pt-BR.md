@@ -216,6 +216,8 @@ Dockerfile                  # Build multi-stage (sdk:8.0 -> aspnet:8.0)
 .dockerignore
 render.yaml                 # Blueprint do Render para a demo pública (Docker + Neon)
 .github/workflows/ci.yml    # restore -> build -> test (+ docker build)
+GLOSSARY.md                 # Vocabulário do domínio (fonte única)
+docs/adr/                   # Architecture Decision Records (0001-0008)
 docs/deploy.md              # Runbook de deploy (Neon, Render, smoke test, free tier)
 docs/images/swagger.png     # Print do Swagger UI usado neste README
 src/
@@ -242,6 +244,8 @@ graph LR
 ```
 
 ## Decisões técnicas
+
+Cada item abaixo está registrado como um ADR em [`docs/adr/`](docs/adr/) (contexto, decisão, consequências); o vocabulário do projeto fica em [`GLOSSARY.md`](GLOSSARY.md).
 
 - **302 (não 301)** nos redirects para que expiração e contagem de cliques continuem funcionando (navegadores cacheiam 301 agressivamente).
 - **Códigos Base62 de 7 chars** via `RandomNumberGenerator` (~3,5T combinações) + índice UNIQUE + retry em colisão.

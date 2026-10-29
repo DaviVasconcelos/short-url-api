@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-28):** Fases 0-7 concluídas e corte enxuto em andamento - **0a, 1a, 3a, 3b, 3c, 3d, 4a e 4b concluídas** (89 testes verdes; PostgreSQL em produção no Neon, auth JWT, ownership, listagem paginada, container readiness e demo pública em `https://shorturl-davi.onrender.com`). Próxima entrega: **7a** (consolidação de docs/ADRs). As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-29):** **Corte enxuto concluído** — 0a, 1a, 3a, 3b, 3c, 3d, 4a, 4b e **7a** entregues (91 testes verdes; PostgreSQL em produção no Neon, auth JWT, ownership, listagem paginada, container readiness, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/`). O que resta são apenas itens **stretch** (Redis, cleanup de expirados, rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -317,7 +317,7 @@ Content-Type: application/json
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
 | **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | **Adiado** | Apaga só expirados, em lotes, de forma idempotente | 1a |
 |  | **6b** `BackgroundService` + testes | **Adiado** | Job roda no intervalo configurado e pode ser desligado em testes | 6a |
-| **7. Docs** | **7a** README/AGENTS/PLAN + ADRs + screenshot | **Pendente** | Docs sincronizados com o código; roadmap atualizado | todas ativas |
+| **7. Docs** | **7a** README/AGENTS/PLAN + ADRs + screenshot | **Feito** | Docs sincronizados com o código; roadmap atualizado | todas ativas |
 | **8. SQL Server** | **8a** Compose + migrations locais | **Cortado** | Provider SQL Server funciona localmente; sem deploy | 1a |
 
 ### 12.3 Ordem de execução
@@ -326,7 +326,7 @@ Content-Type: application/json
 0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
 ```
 
-- **0a, 1a, 3a, 3b, 3c, 3d, 4a e 4b concluídas.** A 4b foi concluída em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a ordem restante começa em **7a**.
+- **0a, 1a, 3a, 3b, 3c, 3d, 4a, 4b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com` e a 7a fechou em 2026-10-29, encerrando o corte enxuto. O que sobra é stretch.
 - **1b é opcional rápido**: fazer se o compose local ou o job Postgres da CI não atrasarem a entrega.
 - **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
@@ -372,6 +372,8 @@ Content-Type: application/json
 - [x] CI verde com build, testes e Docker.
 - [x] Swagger acessível na demo pública.
 - [x] Testes cobrindo auth, ownership, create, redirect, delete e listagem paginada.
+
+> **Corte enxuto encerrado em 2026-10-29.** Todos os itens acima estão entregues na `main`; o que resta no roadmap é **stretch** (2, 5, 6 e 3e) ou **cortado** (8a).
 
 ### 12.8 Fluxo de trabalho
 
