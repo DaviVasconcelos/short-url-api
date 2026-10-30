@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-107%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Core 8**. Foco em REST bem feito, EF Core, cache e boas práticas de engenharia.
@@ -23,8 +23,8 @@ Um encurtador de URLs minimalista e bem arquitetado, feito com **C# e ASP.NET Co
 - `GET /{code}` — redirect 302 para a URL original + contagem de cliques
 - `GET /api/urls/{code}` — estatísticas (URL original, createdAt, expiresAt, clickCount)
 - `DELETE /api/urls/{code}` — remove uma URL curta com dono (Bearer token obrigatório)
-- Validação (apenas http/https, máx. 2048 chars), 409 em conflito de alias, 410 em link expirado
-- Cache em memória no caminho quente de redirect, rate limiting de janela fixa na criação e auth
+- Validação (apenas http/https, máx. 2048 chars, `expiresInDays` até 3650), 409 em conflito de alias, 410 em link expirado
+- Cache em memória no caminho quente de redirect, rate limiting de janela fixa por usuário (por IP quando anônimo) na criação, listagem, delete e auth
 - Cleanup em background que apaga links 30 dias após expirarem (`Cleanup:*`, desligado por padrão)
 - Auth JWT (HS256, 60 min), `PasswordHasher<User>`, emails normalizados
 - Ownership: creates autenticados ganham dono; só o dono lista ou deleta, e links anônimos não podem ser deletados pela API
@@ -119,11 +119,11 @@ Rodar a suíte:
 dotnet test ShortUrl.slnx
 ```
 
-**100 testes xUnit** em quatro áreas:
+**107 testes xUnit** em quatro áreas:
 
 - `Generators/` — tamanho e alfabeto do código Base62 e validação de argumento.
-- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração, not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, cleanup de links expirados (janela de retenção, links sem expiração, múltiplos lotes, idempotência, com um `TimeProvider` falso), além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
-- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição, a política configurável de retry das migrations e a landing da raiz. Um teste dedicado cobre o rate limit de auth. Quatro `PostgresApiTests` sobem a API contra um PostgreSQL real: aplicam as migrations PostgreSQL no startup e exercitam health, create → redirect → clique, listagem/delete com dono e stats. Eles só rodam quando `SHORTURL_TEST_POSTGRES` aponta para um banco (o job `postgres` da CI define) e são pulados caso contrário.
+- `Services/` — validação de URL/alias, conflito de alias, incremento de clique, populate/evict do cache, expiração (incluindo o teto de 3650 dias e o "nunca expira" para `<= 0`), not found, atribuição de dono, ownership no delete, listagem paginada por dono, base URL configurada/da requisição, cleanup de links expirados (janela de retenção, links sem expiração, múltiplos lotes, idempotência, com um `TimeProvider` falso), além de register/login, normalização de email, hash de senha, claims do JWT e falhas de auth. Rodam contra **SQLite in-memory** (não o provider EF InMemory, que não executa o `ExecuteUpdateAsync` do incremento de clique).
+- `Integration/` — `WebApplicationFactory<Program>` sobe a API real com um banco SQLite em memória e exercita create → redirect → stats, register → `/me`, login, email duplicado, credenciais inválidas, respostas 401, fluxos de ownership `401`/`403`/`404`, paginação autenticada, probes de liveness/readiness, a flag do Swagger, `ForwardedHeaders`, a base URL derivada da requisição, a política configurável de retry das migrations e a landing da raiz. Testes dedicados cobrem o rate limit de auth e as partições por usuário (esgotar o bucket de um usuário não afeta outro, e chamadas anônimas caem no bucket de IP). Quatro `PostgresApiTests` sobem a API contra um PostgreSQL real: aplicam as migrations PostgreSQL no startup e exercitam health, create → redirect → clique, listagem/delete com dono e stats. Eles só rodam quando `SHORTURL_TEST_POSTGRES` aponta para um banco (o job `postgres` da CI define) e são pulados caso contrário.
 - `Persistence/` — monta o modelo PostgreSQL sem banco e valida o DDL gerado (tabelas, colunas, índices únicos, FK); o teste de ownership SQLite cobre links com dono e anônimos.
 
 ## Referência da API
@@ -142,7 +142,7 @@ dotnet test ShortUrl.slnx
 | GET | `/health` | `200 OK` | Probe de readiness (verifica o banco) |
 | GET | `/` | `302 Found` | Redireciona para o Swagger; devolve um índice JSON quando o Swagger está desligado |
 
-`POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `GET /api/urls` exige Bearer token e retorna apenas os links do chamador; `page` tem padrão `1`, `pageSize` tem padrão `20` (máximo `100`), e links expirados continuam listados até serem deletados. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
+`POST /api/urls` aceita Bearer token opcional; quando presente, o link pertence ao usuário. `expiresInDays` é opcional (usa `ShortUrl:DefaultExpiryDays`, 30), deve ser no máximo `3650`, e `0` ou negativo significa que o link nunca expira. `GET /api/urls` exige Bearer token e retorna apenas os links do chamador; `page` tem padrão `1`, `pageSize` tem padrão `20` (máximo `100`), e links expirados continuam listados até serem deletados. `DELETE` exige Bearer token: `401` sem token/inválido, `403` para não-dono ou link anônimo, `404` se o código não existe. Stats e redirects continuam públicos.
 
 Exemplo:
 
@@ -187,7 +187,7 @@ Authorization: Bearer <jwt>
 }
 ```
 
-Códigos de erro: `400` URL/email/senha ou paginação inválidos, `401` credenciais ou token ausente/inválido, `403` não-dono ou link anônimo no delete, `404` não encontrado, `409` alias ou email em uso, `410` expirado, `429` rate limited. Um link expirado responde `410` por 30 dias e `404` depois que o cleanup apaga a linha (ADR-0009).
+Códigos de erro: `400` URL/email/senha, `expiresInDays` fora do intervalo ou paginação inválidos, `401` credenciais ou token ausente/inválido, `403` não-dono ou link anônimo no delete, `404` não encontrado, `409` alias ou email em uso, `410` expirado, `429` rate limited. Um link expirado responde `410` por 30 dias e `404` depois que o cleanup apaga a linha (ADR-0009).
 
 Exemplo de auth:
 
@@ -219,7 +219,7 @@ render.yaml                 # Blueprint do Render para a demo pública (Docker +
 .github/workflows/ci.yml    # restore -> build -> test, job PostgreSQL, docker build
 .config/dotnet-tools.json   # dotnet-ef fixado, restaurado com `dotnet tool restore`
 GLOSSARY.md                 # Vocabulário do domínio (fonte única)
-docs/adr/                   # Architecture Decision Records (0001-0009)
+docs/adr/                   # Architecture Decision Records (0001-0010)
 docs/deploy.md              # Runbook de deploy (Neon, Render, smoke test, free tier)
 docs/images/swagger.png     # Print do Swagger UI usado neste README
 src/
@@ -229,7 +229,7 @@ src/
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres
 tests/
-  ShortUrl.Tests/           # 100 testes xUnit (generators, services, integração, persistência)
+  ShortUrl.Tests/           # 107 testes xUnit (generators, services, integração, persistência)
 ```
 
 Regra de dependência: `Api -> Application -> Infrastructure`, mais `Api -> Infrastructure.Postgres -> Infrastructure`, com `Application` e `Infrastructure` dependendo de `Domain`. Controllers nunca tocam `DbContext` diretamente — apenas `IShortUrlService` ou `IAuthService`.
@@ -256,7 +256,8 @@ Cada item abaixo está registrado como um ADR em [`docs/adr/`](docs/adr/) (conte
 - **Serviço agnóstico de provider**: `ShortUrlService` depende apenas de `AppDbContext`; `AddDbContext<AppDbContext, PostgresAppDbContext>` troca a implementação.
 - **Auth JWT** com HS256, expiração de 60 minutos e claims `sub`/`email`/`jti`. O `AuthService` valida emails, normaliza para lowercase, faz hash com o `PasswordHasher<User>` do ASP.NET Core Identity e emite tokens no register/login. Não há refresh tokens, roles ou reset de senha.
 - **Ownership** é opcional no create e obrigatório no delete. Um Bearer token válido define `ShortUrl.OwnerId`; criação anônima continua permitida. `DELETE` é só para o dono, retorna `403` para não-donos e links anônimos, e `401` sem token válido. Stats e redirects continuam públicos.
-- **Rate limiting de janela fixa**: 30 req/min/IP na criação de URLs e 10 req/min/IP em register/login, retornando `429` com `Retry-After`.
+- **Rate limiting de janela fixa, particionado por usuário**: `create-url` (30/min), `list-urls` (60/min) e `delete-url` (30/min) usam `user:{id}` quando a requisição traz um token válido e `ip:{ip}` caso contrário; `auth` (10/min) usa sempre o IP, porque ainda não há identidade antes do login. As respostas são `429` com `Retry-After`. O `UseRateLimiter()` roda **depois** do `UseAuthentication()`, senão o `HttpContext.User` fica vazio e o bucket por usuário degradaria silenciosamente para IP ([ADR-0010](docs/adr/0010-rate-limits-partitioned-by-user.md)).
+- **`expiresInDays` tem teto de 3650 dias** (dez anos). Acima disso o serviço responde `400` em vez de deixar o `DateTime.AddDays` estourar em um `500`; `<= 0` continua significando "nunca expira".
 - **Aliases reservados** (`api`, `urls`, `health`, `swagger`, `favicon.ico`) são rejeitados para não sombrear rotas do app.
 - **Liveness e readiness são separados**: `/health/live` só prova que o processo está de pé, enquanto `/health` executa o check do DbContext. Orquestradores devem apontar o liveness para `/health/live`, para que um banco acordando não provoque restarts.
 - **Forwarded headers** (`X-Forwarded-For` e `X-Forwarded-Proto`) são aceitos de qualquer proxy, porque o pool do Render é dinâmico. O `ForwardLimit` fica em `1`, então só o endereço mais à direita é consumido e o rate limit enxerga o IP do cliente.
@@ -286,7 +287,8 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
   },
   "ShortUrl": { "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 },
   "Jwt": { "Issuer": "ShortUrl.Api", "Audience": "ShortUrl.Api", "ExpiryMinutes": 60 },
-  "Cleanup": { "Enabled": false, "IntervalMinutes": 60, "RetentionDays": 30, "BatchSize": 500 }
+  "Cleanup": { "Enabled": false, "IntervalMinutes": 60, "RetentionDays": 30, "BatchSize": 500 },
+  "RateLimiting": { "CreatePerMinute": 30, "ListPerMinute": 60, "DeletePerMinute": 30, "AuthPerMinute": 10 }
 }
 ```
 
@@ -295,6 +297,8 @@ O comportamento não muda: as duas requisições retornam `302` e o endpoint de 
 `ShortUrl:BaseUrl` é opcional: deixe sem valor para derivar os links da requisição, ou defina `ShortUrl__BaseUrl` para fixar um domínio público. O Swagger segue `Swagger:Enabled` e vem ligado em Development / desligado em Production; defina `Swagger__Enabled=true` para expô-lo em um container ou deploy.
 
 `Cleanup:Enabled` liga o cleanup de links expirados (padrão desligado, para nenhuma execução local apagar dados sem querer). Quando ligado, um `BackgroundService` roda uma vez no startup e depois a cada `Cleanup:IntervalMinutes`, apagando em lotes de `Cleanup:BatchSize` (500) os links cujo `ExpiresAt` é mais antigo que `Cleanup:RetentionDays` (30). A janela de retenção é o motivo de um link expirado responder `410 Gone` por um mês antes de a linha sumir e o mesmo código passar a responder `404` — veja o [ADR-0009](docs/adr/0009-expired-link-retention.md).
+
+`RateLimiting:*` define as cotas por minuto de cada policy (`create-url`, `list-urls`, `delete-url`, `auth`). Todo valor é validado no startup (1–10000), então um typo derruba o boot em vez de desligar o limite silenciosamente. Os limites vivem no processo, então um deploy com múltiplas instâncias permitiria a cota cheia em cada uma — um limitador distribuído exigiria Redis e está fora do escopo.
 
 SQLite é o padrão. Para rodar contra PostgreSQL localmente:
 
@@ -323,10 +327,10 @@ Veja `PLAN.md` §12 para a divisão detalhada das fases.
 - [x] Deploy de demo pública (Render Free + Neon)
 - [x] Documentação, testes e runbook de deploy
 - [x] Cleanup em background de links expirados (retenção de 30 dias, em lotes, configurável)
+- [x] Rate limits particionados por usuário, com policies de listagem/delete e teto validado de `expiresInDays`
 
 **Stretch**
 - [ ] Cache distribuído com Redis
-- [ ] Rate limiting por usuário
 
 **Cortado**
 - Exemplo local com SQL Server (redundante com PostgreSQL)

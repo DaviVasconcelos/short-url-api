@@ -11,7 +11,7 @@ Use these names when writing issues, tests, PRs and ADRs. If a concept is missin
 | `ShortUrl` | Record binding a `shortCode` to an `originalUrl`. The central domain entity. | `src/ShortUrl.Domain/ShortUrl.cs` |
 | `shortCode` | Short, unique Base62 identifier. It is the trailing segment of the short URL. | `ICodeGenerator`, `ShortUrl.ShortCode` |
 | `originalUrl` | Redirect target. Validated as an absolute `http`/`https` URL on create (max 2048 chars). | `ShortUrl.OriginalUrl` |
-| `expiresAt` | UTC instant when the link stops redirecting; `null` means it never expires. `expiresInDays` omitted uses `ShortUrl:DefaultExpiryDays` (30); `<= 0` means "never". | `ShortUrl.ExpiresAt`, `ResolveExpiry` |
+| `expiresAt` | UTC instant when the link stops redirecting; `null` means it never expires. `expiresInDays` omitted uses `ShortUrl:DefaultExpiryDays` (30); `<= 0` means "never"; the maximum accepted is 3650 days (ten years), anything above answers `400`. | `ShortUrl.ExpiresAt`, `ShortUrlService.TryResolveExpiry` |
 | Expired link | A `ShortUrl` whose `expiresAt` is in the past. It stops redirecting (`410 Gone`) but the row survives until the cleanup deletes it. | `ShortUrlService.GetOriginalAsync` |
 | Retention window | How long an expired link keeps its row before the cleanup deletes it: `Cleanup:RetentionDays` (30) after `expiresAt`. It is why `410 Gone` still means something for a month; afterwards the same `shortCode` answers `404`. | `CleanupOptions`, `ExpiredLinkCleaner` |
 | Expired-link cleanup | Background job that deletes expired links past the retention window, in batches, once at startup and then every `Cleanup:IntervalMinutes`. Off unless `Cleanup:Enabled` is true. | `ExpiredLinkCleaner`, `ExpiredLinkCleanupService` |
@@ -24,6 +24,8 @@ Use these names when writing issues, tests, PRs and ADRs. If a concept is missin
 | Custom alias | Caller-supplied `shortCode` accepted on create. Must match `^[a-zA-Z0-9_-]{3,30}$` and not be reserved. | `AliasPattern` in `ShortUrlService` |
 | Reserved alias | A `shortCode` that would shadow an app route: `api`, `urls`, `health`, `swagger`, `favicon.ico`. Rejected on create. | `ReservedAliases` in `ShortUrlService` |
 | Cache-aside | Redirect path pattern: read the cache, fall back to the database, then populate the cache. Stores only `originalUrl` + `expiresAt`. | `ShortUrlService.GetOriginalAsync` |
+| Rate-limit policy | Named fixed-window quota applied to an endpoint through `[EnableRateLimiting]`: `create-url`, `list-urls`, `delete-url` and `auth`. Limits come from `RateLimiting:*` and are validated at startup. | `Program.cs`, `RateLimitingOptions` |
+| Rate-limit partition | The bucket a request counts against: `user:{id}` when the request carries a valid token, `ip:{ip}` (or `ip:unknown` without a remote address) otherwise. `auth` is always partitioned by IP, since there is no identity before login. Requires `UseRateLimiter()` to run after `UseAuthentication()`. | `RateLimitPartitions` |
 | `cacheTtlSeconds` | Lifetime of a cache entry. Default `300`. | `ShortUrl:CacheTtlSeconds` |
 | `baseUrl` | Prefix used in the short links returned by create/list. Configured value, else derived from the request, else a relative `/{code}`. | `ShortUrlOptions.BaseUrl`, `Request.GetBaseUrl()` |
 | Liveness | Proof the process is up, without touching dependencies. | `GET /health/live` |

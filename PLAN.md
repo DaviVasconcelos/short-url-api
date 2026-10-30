@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-30):** **Corte enxuto concluído + 1b + 6a/6b** — 0a, 1a, **1b**, 3a, 3b, 3c, 3d, 4a, 4b, **6a**, **6b** e **7a** entregues (**100 testes verdes**; PostgreSQL em produção no Neon e validado também na CI, auth JWT, ownership, listagem paginada, container readiness, cleanup de links expirados com retenção de 30 dias, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/0001`-`0009`). O que resta são apenas itens **stretch** (Redis e rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-30):** **Corte enxuto concluído + 1b + 6a/6b + 3e** — 0a, 1a, **1b**, 3a, 3b, 3c, 3d, **3e**, 4a, 4b, **6a**, **6b** e **7a** entregues (**107 testes**; PostgreSQL em produção no Neon e validado também na CI, auth JWT, ownership, listagem paginada, rate limit por usuário, container readiness, cleanup de links expirados com retenção de 30 dias, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/0001`-`0010`). O que resta são apenas itens **stretch** (Redis) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -284,7 +284,7 @@ Content-Type: application/json
 ### 12.1 Decisões travadas
 
 - **Escopo ativo:** PostgreSQL, auth JWT + ownership, listagem paginada, deploy e documentação/testes.
-- **Stretch:** Redis e rate limit por usuário.
+- **Stretch:** Redis (cache distribuído).
 - **Cortado:** SQL Server local (redundante com PostgreSQL) e Fly.io.
 - **Deploy:** Render Free Web Service + Neon Free Postgres. Custo **$0** e sem cartão de crédito. Demo: `https://shorturl-davi.onrender.com` (Blueprint em `render.yaml`).
 - **Banco local/testes:** SQLite (mantém a suíte rápida e sem dependência externa).
@@ -310,7 +310,7 @@ Content-Type: application/json
 |  | **3b** register/login/me + JWT + 401 | **Feito** | Fluxo de login e `me` funcionando; Swagger com Bearer; ownership concluído na 3c | 3a |
 |  | **3c** Ownership no create/delete + política de anônimos | **Feito** | Dono deleta (`204`); sem token `401`; não-dono e link anônimo recebem `403`; código ausente `404` | 3b |
 |  | **3d** `GET /api/urls` paginado | **Feito** | Lista só links do usuário com `page`/`pageSize` validados | 3c |
-|  | **3e** Hardening | **Stretch** | Rate limit por usuário/IP, validação de `expiresInDays` e ProblemDetails | 3b |
+|  | **3e** Hardening | **Feito** | Rate limit por usuário/IP em create/list/delete, `expiresInDays` limitado a 3650 dias (`400`) e corpos de erro como `ProblemDetails` | 3b |
 | **4. Deploy** | **4a** Container readiness | **Feito** | Docker honra `$PORT`; `/health/live` e `/health`; `ForwardedHeaders`; Swagger flag; BaseUrl fallback | 1a |
 |  | **4b** Render + Neon | **Feito** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
@@ -323,15 +323,16 @@ Content-Type: application/json
 ### 12.3 Ordem de execução
 
 ```text
-0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a → 1b → 6a → 6b
+0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a → 1b → 6a → 6b → 3e
 ```
 
-- **0a, 1a, 1b, 3a, 3b, 3c, 3d, 4a, 4b, 6a, 6b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a 7a fechou em 2026-10-29, encerrando o corte enxuto; a **1b** entrou logo depois como polimento e a **6a/6b** (cleanup de expirados com retenção de 30 dias) fechou a última lacuna funcional, com **100 testes verdes**.
+- **0a, 1a, 1b, 3a, 3b, 3c, 3d, 3e, 4a, 4b, 6a, 6b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a 7a fechou em 2026-10-29, encerrando o corte enxuto; a **1b** entrou logo depois como polimento, a **6a/6b** (cleanup de expirados com retenção de 30 dias) fechou a última lacuna funcional e a **3e** (rate limit por usuário + teto de `expiresInDays`) foi puxada do stretch para o escopo ativo, com **107 testes**.
 - **1b entregue** com `postgres:16` como service container no job `postgres` da CI, `dotnet-ef` fixado em `.config/dotnet-tools.json` (`dotnet tool restore`) e quatro `PostgresApiTests` opt-in via `SHORTURL_TEST_POSTGRES`. Não foi preciso compose local: o rehearsal usa `docker run postgres:16`.
 - **6a/6b entregues** com `ExpiredLinkCleaner` (lotes de 500, `TimeProvider`, retenção de 30 dias), `ExpiredLinkCleanupService` (`BackgroundService` registrado só com `Cleanup:Enabled`) e o índice `ExpiresAt` nos dois providers (`AddExpiresAtIndex` em SQLite e PostgreSQL). A decisão de retenção está no ADR-0009.
+- **3e entregue** com `RateLimitingOptions` (`RateLimiting:*`, validado no startup), quatro policies (`create-url` 30/min, `list-urls` 60/min, `delete-url` 30/min, `auth` 10/min), partição `user:{id}` quando autenticado e `ip:{ip}` quando anônimo (`RateLimitPartitions`), `UseRateLimiter()` movido para depois de `UseAuthentication()` e teto de 3650 dias em `expiresInDays` (`ShortUrlService.MaxExpiryDays` → `400`). O mesmo commit corrigiu os controllers que embrulhavam `Problem(...)` dentro de `BadRequest`/`Conflict`/`Unauthorized`, o que devolvia o wrapper serializado em vez de `ProblemDetails`. Decisões no ADR-0010.
 - **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
-- **2, 5 e 3e são stretch/adiados**: só entram se ainda houver interesse depois do que já está publicado.
+- **2 e 5 são stretch/adiados**: só entram se ainda houver interesse depois do que já está publicado. A **3e** saiu do stretch e foi entregue.
 - **8a está cortado**; PostgreSQL já demonstra a troca de provider.
 - O Render Key Value só é necessário se o stretch de Redis for feito.
 
@@ -357,7 +358,7 @@ Content-Type: application/json
 
 ### 12.6 Fora do escopo ativo
 
-- Redis e rate limit por usuário (stretch).
+- Redis (stretch).
 - SQL Server local (cortado) e SQL Server em produção.
 - Refresh tokens, roles/admin, reset de senha e verificação de e-mail.
 - Frontend, analytics além de `ClickCount` e multi-tenancy.
@@ -373,8 +374,9 @@ Content-Type: application/json
 - [x] CI verde com build, testes e Docker.
 - [x] Swagger acessível na demo pública.
 - [x] Testes cobrindo auth, ownership, create, redirect, delete e listagem paginada.
+- [x] Rate limit por usuário em create/list/delete e `expiresInDays` limitado a 3650 dias.
 
-> **Corte enxuto encerrado em 2026-10-29.** Todos os itens acima estão entregues na `main`; o que resta no roadmap é **stretch** (2, 5, 6 e 3e) ou **cortado** (8a).
+> **Corte enxuto encerrado em 2026-10-29.** Todos os itens acima estão entregues na `main`; o que resta no roadmap é **stretch** (2 e 5, com a 6 e a 3e já entregues) ou **cortado** (8a).
 
 ### 12.8 Fluxo de trabalho
 

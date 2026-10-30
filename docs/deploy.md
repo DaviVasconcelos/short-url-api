@@ -139,4 +139,4 @@ To see the retry path, point the connection string at a closed port and set `Dat
 | Migration hangs then times out | `-pooler` host used for migrations | Switch to the direct host |
 | Links use `http://` | `ForwardedHeaders` not applied | Fix the app; do not pin `ShortUrl__BaseUrl` |
 | Deploy waits forever | `checksPass` and CI is red or not reporting | Fix CI, or set `autoDeployTrigger: commit` temporarily |
-| `429` on the first request | Shared corporate NAT hitting the 30/min per-IP limit | Expected; the limit is per client IP |
+| `429` on the first request | Shared corporate NAT hitting the 30/min anonymous limit (authenticated callers get their own bucket) | Expected; anonymous limits are per client IP |
