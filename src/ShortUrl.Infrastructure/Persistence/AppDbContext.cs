@@ -51,6 +51,9 @@ public class AppDbContext : DbContext
 
         shortUrl.HasIndex(x => x.OwnerId);
 
+        // Supports the expired-link cleanup: filter on ExpiresAt, ordered by it.
+        shortUrl.HasIndex(x => x.ExpiresAt);
+
         var user = modelBuilder.Entity<Domain.User>();
 
         user.ToTable("Users");

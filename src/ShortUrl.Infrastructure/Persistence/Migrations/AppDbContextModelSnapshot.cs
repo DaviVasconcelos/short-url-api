@@ -49,6 +49,8 @@ namespace ShortUrl.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExpiresAt");
+
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("ShortCode")

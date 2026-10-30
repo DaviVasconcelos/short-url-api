@@ -56,6 +56,8 @@ namespace ShortUrl.Infrastructure.Postgres.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExpiresAt");
+
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("ShortCode")
