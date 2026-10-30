@@ -12,6 +12,9 @@ Use these names when writing issues, tests, PRs and ADRs. If a concept is missin
 | `shortCode` | Short, unique Base62 identifier. It is the trailing segment of the short URL. | `ICodeGenerator`, `ShortUrl.ShortCode` |
 | `originalUrl` | Redirect target. Validated as an absolute `http`/`https` URL on create (max 2048 chars). | `ShortUrl.OriginalUrl` |
 | `expiresAt` | UTC instant when the link stops redirecting; `null` means it never expires. `expiresInDays` omitted uses `ShortUrl:DefaultExpiryDays` (30); `<= 0` means "never". | `ShortUrl.ExpiresAt`, `ResolveExpiry` |
+| Expired link | A `ShortUrl` whose `expiresAt` is in the past. It stops redirecting (`410 Gone`) but the row survives until the cleanup deletes it. | `ShortUrlService.GetOriginalAsync` |
+| Retention window | How long an expired link keeps its row before the cleanup deletes it: `Cleanup:RetentionDays` (30) after `expiresAt`. It is why `410 Gone` still means something for a month; afterwards the same `shortCode` answers `404`. | `CleanupOptions`, `ExpiredLinkCleaner` |
+| Expired-link cleanup | Background job that deletes expired links past the retention window, in batches, once at startup and then every `Cleanup:IntervalMinutes`. Off unless `Cleanup:Enabled` is true. | `ExpiredLinkCleaner`, `ExpiredLinkCleanupService` |
 | `clickCount` | Number of successful redirects. Never cached; incremented straight in the database. | `ShortUrl.ClickCount`, `ExecuteUpdateAsync` |
 | `ownerId` | Owner of the link (`User.Id`). `null` means an anonymous link. FK configured with `OnDelete(SetNull)`. | `ShortUrl.OwnerId` |
 | Anonymous link | A `ShortUrl` with `ownerId = null`. Anyone can create and follow it, but it is never listed and cannot be deleted through the API. | `ShortUrlService` |

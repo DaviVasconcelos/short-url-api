@@ -12,5 +12,6 @@ Decisions that shaped this project, recorded after the fact. Each ADR follows **
 | [0006](0006-cache-aside-with-imemorycache.md) | Cache-aside with `IMemoryCache` on the redirect path | Accepted |
 | [0007](0007-render-free-plus-neon-free.md) | Render Free + Neon Free for the public demo | Accepted |
 | [0008](0008-root-landing-and-literal-routes.md) | Root landing endpoint and literal-route precedence | Accepted |
+| [0009](0009-expired-link-retention.md) | Expired links are retained for 30 days before cleanup | Accepted |
 
 ADRs are immutable once accepted: when a decision changes, add a new ADR that supersedes the old one instead of rewriting history.

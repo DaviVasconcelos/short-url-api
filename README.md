@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviVasconcelos/short-url-api/actions/workflows/ci.yml)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
-![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. Focus on clean REST semantics, EF Core, caching and good engineering practices.
@@ -25,6 +25,7 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 - `DELETE /api/urls/{code}` — delete an owned short URL (Bearer token required)
 - Validation (http/https only, max 2048 chars), 409 on alias conflict, 410 on expired link
 - In-memory cache for hot redirect path, fixed-window rate limiting on creation and auth
+- Background cleanup that purges links 30 days after they expire (`Cleanup:*`, off by default)
 - JWT auth (HS256, 60 min), `PasswordHasher<User>`, normalized emails
 - Ownership: authenticated creates are owned; only the owner can list or delete them, and anonymous links cannot be deleted via the API
 - Swagger with Bearer auth, HealthChecks (`/health/live` for liveness, `/health` for readiness), Docker, GitHub Actions CI, xUnit tests
@@ -35,7 +36,7 @@ A minimal, well-architected URL shortener built with **C# and ASP.NET Core 8**. 
 - **.NET 10 SDK + `ShortUrl.slnx`** apenas como tooling (solution formato novo)
 - **EF Core + SQLite** for local dev/tests and **PostgreSQL** for production, each with its own migrations
 - **JWT Bearer** (`Microsoft.AspNetCore.Authentication.JwtBearer`) + `PasswordHasher<User>`
-- **IMemoryCache**, **Rate Limiting** (built-in .NET 8)
+- **IMemoryCache**, **Rate Limiting** (built-in .NET 8), **`BackgroundService` + `TimeProvider`** for the cleanup job
 - **Swagger / Swashbuckle**, **xUnit**, **`WebApplicationFactory`** for the integration tests
 - **Docker** multi-stage build
 
@@ -108,7 +109,7 @@ The container runs in `Production`, so `Jwt__Key` is required and must be at lea
 
 The public demo is live at <https://shorturl-davi.onrender.com>, running on **Render Free** (Docker) with **Neon Free** PostgreSQL. The service is declared in [`render.yaml`](render.yaml) and the step-by-step runbook — Neon project, Render secrets, smoke test, cold-start behavior and rollback — is in [`docs/deploy.md`](docs/deploy.md).
 
-Production configuration lives only in environment variables (`Database__Provider`, `ConnectionStrings__Postgres`, `Jwt__Key`, `Swagger__Enabled`); no secret is committed. Migrations apply on startup, so the first deploy needs no manual `dotnet ef database update`.
+Production configuration lives only in environment variables (`Database__Provider`, `ConnectionStrings__Postgres`, `Jwt__Key`, `Swagger__Enabled`, `Cleanup__Enabled`); no secret is committed. Migrations apply on startup, so the first deploy needs no manual `dotnet ef database update`.
 
 ## Testing
 
@@ -118,10 +119,10 @@ Run the suite:
 dotnet test ShortUrl.slnx
 ```
 
-**95 xUnit tests** across four areas:
+**100 xUnit tests** across four areas:
 
 - `Generators/` — Base62 code length, alphabet, and argument validation.
-- `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found, owner assignment, delete ownership, paginated owner listing, configurable/request base URL, plus registration/login, email normalization, password hashing, JWT claims, and auth failures. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
+- `Services/` — URL/alias validation, alias conflict, click increment, cache population/eviction, expiration, not-found, owner assignment, delete ownership, paginated owner listing, configurable/request base URL, expired-link cleanup (retention window, links without expiry, multiple batches, idempotency, driven by a fake `TimeProvider`), plus registration/login, email normalization, password hashing, JWT claims, and auth failures. They run against **SQLite in-memory** (not the EF InMemory provider, which can't execute the `ExecuteUpdateAsync` click increment).
 - `Integration/` — `WebApplicationFactory<Program>` boots the real API with an in-memory SQLite database and exercises create → redirect → stats, register → `/me`, login, duplicate email, invalid credentials, 401 responses, ownership `401`/`403`/`404` flows, authenticated pagination, liveness/readiness probes, the Swagger flag, `ForwardedHeaders`, the request-derived base URL, the configurable migration retry policy, and the root landing. A dedicated test covers the auth rate limit. Four `PostgresApiTests` boot the API against a real PostgreSQL instead: they apply the PostgreSQL migrations on startup and exercise health, create → redirect → click, owned list/delete, and stats. They only run when `SHORTURL_TEST_POSTGRES` points at a database (the CI `postgres` job sets it) and are skipped otherwise.
 - `Persistence/` — builds the PostgreSQL model without a database and asserts the generated DDL (tables, columns, unique indexes, FK); SQLite ownership covers owned vs. anonymous links.
 
@@ -186,7 +187,7 @@ Authorization: Bearer <jwt>
 }
 ```
 
-Error codes: `400` invalid URL/email/password or pagination, `401` missing/invalid credentials or token, `403` non-owner or anonymous link on delete, `404` not found, `409` alias or email in use, `410` expired, `429` rate limited.
+Error codes: `400` invalid URL/email/password or pagination, `401` missing/invalid credentials or token, `403` non-owner or anonymous link on delete, `404` not found, `409` alias or email in use, `410` expired, `429` rate limited. An expired link answers `410` for 30 days and `404` after the cleanup removes the row (ADR-0009).
 
 Auth example:
 
@@ -218,17 +219,17 @@ render.yaml                # Render Blueprint for the public demo (Docker + Neon
 .github/workflows/ci.yml   # restore -> build -> test, PostgreSQL job, docker build
 .config/dotnet-tools.json  # dotnet-ef pinned, restored with `dotnet tool restore`
 GLOSSARY.md                # Domain vocabulary (single source of truth)
-docs/adr/                  # Architecture Decision Records (0001-0008)
+docs/adr/                  # Architecture Decision Records (0001-0009)
 docs/deploy.md             # Deploy runbook (Neon, Render, smoke test, free-tier behavior)
 docs/images/swagger.png    # Swagger UI screenshot used in this README
 src/
   ShortUrl.Domain/         # ShortUrl + User entities, ICodeGenerator port (no dependencies)
-  ShortUrl.Api/            # Controllers, Program.cs, DI, JWT, rate limiter, Swagger
-  ShortUrl.Application/    # DTOs, options, services (URLs + auth), JWT generation
+  ShortUrl.Api/            # Controllers, Program.cs, DI, JWT, rate limiter, Swagger, cleanup job
+  ShortUrl.Application/    # DTOs, options, services (URLs + auth + expired-link cleaner), JWT generation
   ShortUrl.Infrastructure/ # AppDbContext, SQLite migrations, Base62CodeGenerator adapter
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + InitialPostgres migration
 tests/
-  ShortUrl.Tests/          # 95 xUnit tests (generators, services, integration, persistence)
+  ShortUrl.Tests/          # 100 xUnit tests (generators, services, integration, persistence)
 ```
 
 Dependency rule: `Api -> Application -> Infrastructure`, plus `Api -> Infrastructure.Postgres -> Infrastructure`, with both `Application` and `Infrastructure` depending on `Domain`. Controllers never touch `DbContext` directly — only `IShortUrlService` or `IAuthService`.
@@ -261,6 +262,7 @@ Each bullet below is recorded as an ADR in [`docs/adr/`](docs/adr/) (context, de
 - **Forwarded headers** (`X-Forwarded-For` and `X-Forwarded-Proto`) are trusted from any proxy, because Render's proxy pool is dynamic. `ForwardLimit` stays at `1`, so only the rightmost address is consumed and rate limiting sees the client IP.
 - **Base URL** comes from `ShortUrl:BaseUrl` when configured; otherwise it is derived from the request (`scheme://host`), which keeps links correct on localhost and on the public demo. `Swagger:Enabled` defaults to the environment (on in Development, off in Production).
 - **Migrations run on startup** (with retry), so `docker run` and future deploys need no manual `dotnet ef database update`.
+- **Expired links are purged 30 days after expiry**, in batches, by an in-process `BackgroundService` that is off unless `Cleanup:Enabled` is set. The retention window keeps `410 Gone` meaningful for a month; after the row is deleted the same code answers `404`.
 
 ### Cache in practice
 
@@ -283,13 +285,16 @@ Behavior is unchanged: both requests return `302` and the stats endpoint reports
     "Postgres": ""
   },
   "ShortUrl": { "CodeLength": 7, "DefaultExpiryDays": 30, "CacheTtlSeconds": 300 },
-  "Jwt": { "Issuer": "ShortUrl.Api", "Audience": "ShortUrl.Api", "ExpiryMinutes": 60 }
+  "Jwt": { "Issuer": "ShortUrl.Api", "Audience": "ShortUrl.Api", "ExpiryMinutes": 60 },
+  "Cleanup": { "Enabled": false, "IntervalMinutes": 60, "RetentionDays": 30, "BatchSize": 500 }
 }
 ```
 
 `Jwt:Key` is intentionally absent from configuration. In Development, the API generates an ephemeral 32-byte key when it is missing (tokens are invalidated on restart). Outside Development, startup fails fast unless `Jwt__Key` is set to a secret of at least 32 bytes. The Docker image runs in `Production`, so pass `-e Jwt__Key=...` when running it.
 
 `ShortUrl:BaseUrl` is optional: leave it unset to derive links from the incoming request, or set `ShortUrl__BaseUrl` to pin a public domain. Swagger follows `Swagger:Enabled` and defaults to on in Development / off in Production; set `Swagger__Enabled=true` to expose it in a container or deploy.
+
+`Cleanup:Enabled` turns the expired-link cleanup on (default off, so local runs never delete data). When enabled, a `BackgroundService` runs once at startup and then every `Cleanup:IntervalMinutes`, deleting links whose `ExpiresAt` is older than `Cleanup:RetentionDays` (30) in batches of `Cleanup:BatchSize` (500). The retention window is why an expired link answers `410 Gone` for a month before the row disappears and the same code starts answering `404` — see [ADR-0009](docs/adr/0009-expired-link-retention.md).
 
 SQLite is the default. To run against PostgreSQL locally:
 
@@ -317,10 +322,10 @@ See `PLAN.md` §12 for the detailed phase breakdown.
 - [x] Container readiness (`$PORT`, liveness/readiness probes, forwarded headers, Swagger flag, base URL fallback)
 - [x] Public demo deploy (Render Free + Neon)
 - [x] Docs, tests, and deploy runbook
+- [x] Background cleanup of expired links (30-day retention, batched, configurable)
 
 **Stretch**
 - [ ] Redis distributed cache
-- [ ] BackgroundService to purge expired links
 - [ ] Per-user rate limiting
 
 **Cut**

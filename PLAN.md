@@ -4,7 +4,7 @@
 > Stack alvo: **.NET 8 (target `net8.0`), SDK 10 para tooling, ASP.NET Core Controllers, EF Core + SQLite (compatível SQL Server), IMemoryCache, Rate Limiting nativo, Swagger, xUnit, Docker, GitHub Actions.**
 > Solution: **`ShortUrl.slnx` (formato novo)** — requer VS 2022 17.12+ ou SDK 10 no CLI. Runtime executado é sempre .NET 8 LTS.
 >
-> **Status (2026-10-29):** **Corte enxuto concluído** — 0a, 1a, **1b**, 3a, 3b, 3c, 3d, 4a, 4b e **7a** entregues (**95 testes verdes**; PostgreSQL em produção no Neon e validado também na CI, auth JWT, ownership, listagem paginada, container readiness, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/`). O que resta são apenas itens **stretch** (Redis, cleanup de expirados, rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
+> **Status (2026-10-30):** **Corte enxuto concluído + 1b + 6a/6b** — 0a, 1a, **1b**, 3a, 3b, 3c, 3d, 4a, 4b, **6a**, **6b** e **7a** entregues (**100 testes verdes**; PostgreSQL em produção no Neon e validado também na CI, auth JWT, ownership, listagem paginada, container readiness, cleanup de links expirados com retenção de 30 dias, demo pública em `https://shorturl-davi.onrender.com` e documentação consolidada com `GLOSSARY.md` + `docs/adr/0001`-`0009`). O que resta são apenas itens **stretch** (Redis e rate limit por usuário) e o SQL Server, que foi cortado. As seções 1-11 são o plano histórico; o plano ativo é a seção **12. Plano v2 - Evolução para portfólio (custo zero)**.
 
 ## 1. Visão geral
 
@@ -253,7 +253,7 @@ Content-Type: application/json
 
 - [ ] Alias customizado reservado + autenticação JWT (liga com projeto 2)
 - [ ] Redis distributed cache
-- [ ] BackgroundService para limpar expirados
+- [x] BackgroundService para limpar expirados
 - [ ] Trocar SQLite por SQL Server via connection string (mostrar que EF abstrai)
 - [ ] Deploy no Fly.io/Render + URL pública no README
 
@@ -284,7 +284,7 @@ Content-Type: application/json
 ### 12.1 Decisões travadas
 
 - **Escopo ativo:** PostgreSQL, auth JWT + ownership, listagem paginada, deploy e documentação/testes.
-- **Stretch:** Redis, cleanup de expirados e rate limit por usuário.
+- **Stretch:** Redis e rate limit por usuário.
 - **Cortado:** SQL Server local (redundante com PostgreSQL) e Fly.io.
 - **Deploy:** Render Free Web Service + Neon Free Postgres. Custo **$0** e sem cartão de crédito. Demo: `https://shorturl-davi.onrender.com` (Blueprint em `render.yaml`).
 - **Banco local/testes:** SQLite (mantém a suíte rápida e sem dependência externa).
@@ -315,22 +315,23 @@ Content-Type: application/json
 |  | **4b** Render + Neon | **Feito** | URL pública no `onrender.com`; fluxo completo validado | 3c, 4a |
 | **5. Redis** | **5a** DI + fallback | **Stretch** | Redis configurado via host/porta; falha cai para o banco | 2a |
 |  | **5b** Health check + compose + testes | **Stretch** | `/health` cobre Redis; cache distribuído validado | 5a |
-| **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | **Adiado** | Apaga só expirados, em lotes, de forma idempotente | 1a |
-|  | **6b** `BackgroundService` + testes | **Adiado** | Job roda no intervalo configurado e pode ser desligado em testes | 6a |
+| **6. Cleanup** | **6a** Cleaner + índice `ExpiresAt` | **Feito** | Apaga só expirados, em lotes, de forma idempotente | 1a |
+|  | **6b** `BackgroundService` + testes | **Feito** | Job roda no intervalo configurado e pode ser desligado em testes | 6a |
 | **7. Docs** | **7a** README/AGENTS/PLAN + ADRs + screenshot | **Feito** | Docs sincronizados com o código; roadmap atualizado | todas ativas |
 | **8. SQL Server** | **8a** Compose + migrations locais | **Cortado** | Provider SQL Server funciona localmente; sem deploy | 1a |
 
 ### 12.3 Ordem de execução
 
 ```text
-0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a
+0a → 1a → 3a → 3b → 3c → 3d → 4a → 4b → 7a → 1b → 6a → 6b
 ```
 
-- **0a, 1a, 1b, 3a, 3b, 3c, 3d, 4a, 4b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a 7a fechou em 2026-10-29, encerrando o corte enxuto, e a **1b** entrou logo depois como polimento.
+- **0a, 1a, 1b, 3a, 3b, 3c, 3d, 4a, 4b, 6a, 6b e 7a concluídas.** A 4b fechou em 2026-10-28 com a demo em `https://shorturl-davi.onrender.com`; a 7a fechou em 2026-10-29, encerrando o corte enxuto; a **1b** entrou logo depois como polimento e a **6a/6b** (cleanup de expirados com retenção de 30 dias) fechou a última lacuna funcional, com **100 testes verdes**.
 - **1b entregue** com `postgres:16` como service container no job `postgres` da CI, `dotnet-ef` fixado em `.config/dotnet-tools.json` (`dotnet tool restore`) e quatro `PostgresApiTests` opt-in via `SHORTURL_TEST_POSTGRES`. Não foi preciso compose local: o rehearsal usa `docker run postgres:16`.
+- **6a/6b entregues** com `ExpiredLinkCleaner` (lotes de 500, `TimeProvider`, retenção de 30 dias), `ExpiredLinkCleanupService` (`BackgroundService` registrado só com `Cleanup:Enabled`) e o índice `ExpiresAt` nos dois providers (`AddExpiresAtIndex` em SQLite e PostgreSQL). A decisão de retenção está no ADR-0009.
 - **4b (deploy) acontece depois de 4a** para que a demo pública já nasça com container readiness, `DELETE` protegido e listagem.
 - Não paralelizar entregas que tocam `Program.cs`, `AppDbContext` ou migrations; o custo de conflito é maior que o ganho.
-- **2, 5, 6 e 3e são stretch/adiados**: só entram depois que o corte ativo estiver publicado.
+- **2, 5 e 3e são stretch/adiados**: só entram se ainda houver interesse depois do que já está publicado.
 - **8a está cortado**; PostgreSQL já demonstra a troca de provider.
 - O Render Key Value só é necessário se o stretch de Redis for feito.
 
@@ -356,7 +357,7 @@ Content-Type: application/json
 
 ### 12.6 Fora do escopo ativo
 
-- Redis, cleanup de expirados e rate limit por usuário (stretch).
+- Redis e rate limit por usuário (stretch).
 - SQL Server local (cortado) e SQL Server em produção.
 - Refresh tokens, roles/admin, reset de senha e verificação de e-mail.
 - Frontend, analytics além de `ClickCount` e multi-tenancy.
