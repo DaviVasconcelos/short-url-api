@@ -82,6 +82,8 @@ curl -X DELETE http://localhost:5000/api/urls/<shortCode> \
 
 Em Development, um `Jwt:Key` ausente é substituído por uma chave efêmera no startup. Os tokens só valem até o próximo restart; defina `Jwt__Key` para uma chave estável.
 
+Prefere clicar a digitar? [`src/ShortUrl.Api/ShortUrl.Api.http`](src/ShortUrl.Api/ShortUrl.Api.http) tem todas as requisições acima e também os caminhos de erro (`400`/`401`/`403`/`404`/`409`/`429`) prontos para rodar no REST Client do VS Code ou no runner `.http` do Rider/Visual Studio.
+
 ![Swagger UI](docs/images/swagger.png)
 
 Com Docker (as migrations do EF são aplicadas automaticamente no startup):
@@ -225,6 +227,7 @@ docs/images/swagger.png     # Print do Swagger UI usado neste README
 src/
   ShortUrl.Domain/          # Entidades ShortUrl + User, porta ICodeGenerator (sem dependências)
   ShortUrl.Api/             # Controllers, Program.cs, DI, JWT, rate limiter, Swagger, job de cleanup
+    ShortUrl.Api.http       # Requisições prontas para o fluxo inteiro (REST Client / .http)
   ShortUrl.Application/     # DTOs, options, services (URLs + auth + cleaner de expirados), geração de JWT
   ShortUrl.Infrastructure/  # AppDbContext, migrations SQLite, adapter Base62CodeGenerator
   ShortUrl.Infrastructure.Postgres/ # PostgresAppDbContext + migration InitialPostgres

@@ -125,3 +125,24 @@ POST {{host}}/api/urls
 Content-Type: application/json
 
 { "url": "https://example.com", "customAlias": "swagger", "expiresInDays": 30 }
+
+### Out-of-range expiresInDays (expect 400 + ProblemDetails, no row created)
+# The cap is ShortUrlService.MaxExpiryDays (3650). Anything above it is rejected
+# instead of overflowing DateTime.AddDays into a 500.
+POST {{host}}/api/urls
+Content-Type: application/json
+
+{ "url": "https://example.com/too-long", "customAlias": null, "expiresInDays": 3651 }
+
+### Zero expiresInDays (expect 201, expiresAt is null: the link never expires)
+POST {{host}}/api/urls
+Content-Type: application/json
+
+{ "url": "https://example.com/forever", "customAlias": null, "expiresInDays": 0 }
+
+### Rate limits (expect 429 + Retry-After once a bucket is exhausted)
+# Fixed window of one minute, per policy:
+#   create-url 30 | list-urls 60 | delete-url 30 | auth 10
+# Authenticated calls count against user:{id}, anonymous calls against ip:{ip},
+# and auth always against the IP. Re-send one of the requests above past its
+# quota to see the 429; the counters live in memory and reset on restart.

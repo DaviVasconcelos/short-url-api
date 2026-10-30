@@ -251,11 +251,13 @@ Content-Type: application/json
 
 ## 9. Melhorias futuras (seção Roadmap do README)
 
-- [ ] Alias customizado reservado + autenticação JWT (liga com projeto 2)
+> Seção histórica, escrita na Fase 7: reflete o roadmap original. O estado atual está na seção **12** — quando as duas divergirem, a 12 vale.
+
+- [x] Alias customizado reservado + autenticação JWT (liga com projeto 2)
 - [ ] Redis distributed cache
 - [x] BackgroundService para limpar expirados
-- [ ] Trocar SQLite por SQL Server via connection string (mostrar que EF abstrai)
-- [ ] Deploy no Fly.io/Render + URL pública no README
+- [ ] ~~Trocar SQLite por SQL Server via connection string~~ — **cortado**; o PostgreSQL já demonstra a troca de provider
+- [x] Deploy no Render + URL pública no README
 
 ## 10. Checklist de pronto (Definição de Feito)
 

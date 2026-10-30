@@ -74,6 +74,7 @@ Run against the public host after the first deploy. `check` values are status co
 | `DELETE /api/urls/{code}` (owner) | `204` |
 | `DELETE` without token / other user / unknown code | `401` / `403` / `404` |
 | `POST /api/urls` with alias `swagger` | `400` |
+| `POST /api/urls` with `expiresInDays: 3651` | `400` (cap is 3650; no row is created) |
 | 31st `POST /api/urls` in a minute | `429` + `Retry-After` |
 | `GET /{code}` after a redeploy | `302` (data lives in Neon) |
 
