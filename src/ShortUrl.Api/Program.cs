@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using ShortUrl.Api.BackgroundServices;
 using ShortUrl.Api.Configuration;
 using ShortUrl.Api.Errors;
 using ShortUrl.Application.Options;
@@ -54,6 +55,27 @@ var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlO
 var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()
     ?? new JwtOptions();
 
+var cleanupOptions = builder.Configuration.GetSection("Cleanup").Get<CleanupOptions>()
+    ?? new CleanupOptions();
+
+if (cleanupOptions.IntervalMinutes is < 1 or > 1440)
+{
+    throw new InvalidOperationException(
+        "Cleanup:IntervalMinutes must be between 1 and 1440.");
+}
+
+if (cleanupOptions.RetentionDays < 0)
+{
+    throw new InvalidOperationException(
+        "Cleanup:RetentionDays must be zero or greater.");
+}
+
+if (cleanupOptions.BatchSize is < 1 or > 5000)
+{
+    throw new InvalidOperationException(
+        "Cleanup:BatchSize must be between 1 and 5000.");
+}
+
 var jwtKey = builder.Configuration["Jwt:Key"];
 var generatedDevelopmentKey = false;
 
@@ -92,11 +114,19 @@ jwtOptions.Key = jwtKey;
 
 builder.Services.AddSingleton(shortUrlOptions);
 builder.Services.AddSingleton(jwtOptions);
+builder.Services.AddSingleton(cleanupOptions);
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
 builder.Services.AddScoped<IPasswordHasher<Domain.User>, PasswordHasher<Domain.User>>();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IExpiredLinkCleaner, ExpiredLinkCleaner>();
+
+if (cleanupOptions.Enabled)
+{
+    builder.Services.AddHostedService<ExpiredLinkCleanupService>();
+}
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

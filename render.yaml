@@ -22,5 +22,8 @@ services:
         generateValue: true
       - key: Swagger__Enabled
         value: "true"
+      # Purge links 30 days past their expiry (defaults to 60 min interval, 500 per batch).
+      - key: Cleanup__Enabled
+        value: "true"
       # ShortUrl__BaseUrl is intentionally unset: links derive from the request host,
       # which also exercises the X-Forwarded-Proto handling end to end.
