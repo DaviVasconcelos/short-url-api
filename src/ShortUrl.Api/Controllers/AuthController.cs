@@ -39,20 +39,20 @@ public sealed class AuthController : ControllerBase
         {
             RegisterStatus.Created => Created("/api/auth/me", result.Response),
 
-            RegisterStatus.EmailConflict => Conflict(Problem(
+            RegisterStatus.EmailConflict => Problem(
                 detail: "An account with this email already exists.",
                 statusCode: StatusCodes.Status409Conflict,
-                title: "Email already registered")),
+                title: "Email already registered"),
 
-            RegisterStatus.InvalidPassword => BadRequest(Problem(
+            RegisterStatus.InvalidPassword => Problem(
                 detail: "Password must be between 8 and 128 characters.",
                 statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid password")),
+                title: "Invalid password"),
 
-            _ => BadRequest(Problem(
+            _ => Problem(
                 detail: "A valid email address is required.",
                 statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid email"))
+                title: "Invalid email")
         };
     }
 
@@ -73,10 +73,10 @@ public sealed class AuthController : ControllerBase
 
         return result.Status == LoginStatus.Success
             ? Ok(result.Response)
-            : Unauthorized(Problem(
+            : Problem(
                 detail: "Invalid email or password.",
                 statusCode: StatusCodes.Status401Unauthorized,
-                title: "Invalid credentials"));
+                title: "Invalid credentials");
     }
 
     /// <summary>Returns the authenticated user.</summary>

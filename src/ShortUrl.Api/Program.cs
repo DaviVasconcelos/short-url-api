@@ -12,6 +12,7 @@ using Microsoft.OpenApi.Models;
 using ShortUrl.Api.BackgroundServices;
 using ShortUrl.Api.Configuration;
 using ShortUrl.Api.Errors;
+using ShortUrl.Api.RateLimiting;
 using ShortUrl.Application.Options;
 using ShortUrl.Application.Services;
 using ShortUrl.Domain.Abstractions;
@@ -52,6 +53,12 @@ switch (databaseProvider.ToLowerInvariant())
 var shortUrlOptions = builder.Configuration.GetSection("ShortUrl").Get<ShortUrlOptions>()
     ?? new ShortUrlOptions();
 
+if (shortUrlOptions.DefaultExpiryDays is < 0 or > ShortUrlService.MaxExpiryDays)
+{
+    throw new InvalidOperationException(
+        $"ShortUrl:DefaultExpiryDays must be between 0 and {ShortUrlService.MaxExpiryDays}.");
+}
+
 var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()
     ?? new JwtOptions();
 
@@ -74,6 +81,18 @@ if (cleanupOptions.BatchSize is < 1 or > 5000)
 {
     throw new InvalidOperationException(
         "Cleanup:BatchSize must be between 1 and 5000.");
+}
+
+var rateLimitingOptions = builder.Configuration.GetSection("RateLimiting").Get<RateLimitingOptions>()
+    ?? new RateLimitingOptions();
+
+if (rateLimitingOptions.CreatePerMinute is < 1 or > 10000 ||
+    rateLimitingOptions.ListPerMinute is < 1 or > 10000 ||
+    rateLimitingOptions.DeletePerMinute is < 1 or > 10000 ||
+    rateLimitingOptions.AuthPerMinute is < 1 or > 10000)
+{
+    throw new InvalidOperationException(
+        "RateLimiting limits must be between 1 and 10000 requests per minute.");
 }
 
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -115,6 +134,7 @@ jwtOptions.Key = jwtKey;
 builder.Services.AddSingleton(shortUrlOptions);
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddSingleton(cleanupOptions);
+builder.Services.AddSingleton(rateLimitingOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
@@ -187,24 +207,16 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     options.AddPolicy("create-url", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 30,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0
-            }));
+        RateLimitPartitions.ForUserOrIp(httpContext, rateLimitingOptions.CreatePerMinute));
+
+    options.AddPolicy("list-urls", httpContext =>
+        RateLimitPartitions.ForUserOrIp(httpContext, rateLimitingOptions.ListPerMinute));
+
+    options.AddPolicy("delete-url", httpContext =>
+        RateLimitPartitions.ForUserOrIp(httpContext, rateLimitingOptions.DeletePerMinute));
 
     options.AddPolicy("auth", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0
-            }));
+        RateLimitPartitions.ForIp(httpContext, rateLimitingOptions.AuthPerMinute));
 
     options.OnRejected = async (context, cancellationToken) =>
     {
@@ -252,8 +264,10 @@ using (var scope = app.Services.CreateScope())
 
 app.UseForwardedHeaders(ForwardedHeadersSetup.CreateOptions());
 app.UseExceptionHandler();
-app.UseRateLimiter();
 app.UseAuthentication();
+// Must run after authentication: the partition key is the authenticated user id,
+// which is only populated once UseAuthentication has run.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 if (swaggerEnabled)

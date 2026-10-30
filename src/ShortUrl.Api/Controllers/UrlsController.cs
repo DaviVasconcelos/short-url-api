@@ -29,7 +29,7 @@ public sealed class UrlsController : ControllerBase
 
     /// <summary>Shortens a URL, optionally with a custom alias and expiration.</summary>
     /// <response code="201">Short URL created. The <c>Location</c> header points to the stats resource.</response>
-    /// <response code="400">The URL or alias is invalid.</response>
+    /// <response code="400">The URL, alias or expiration is invalid.</response>
     /// <response code="401">The Authorization header is invalid or expired.</response>
     /// <response code="409">The custom alias is already in use.</response>
     /// <response code="429">Too many requests.</response>
@@ -59,20 +59,26 @@ public sealed class UrlsController : ControllerBase
                 new { code = result.Response!.ShortCode },
                 result.Response),
 
-            CreateShortUrlStatus.AliasConflict => Conflict(Problem(
+            CreateShortUrlStatus.AliasConflict => Problem(
                 detail: "The custom alias is already in use.",
                 statusCode: StatusCodes.Status409Conflict,
-                title: "Alias conflict")),
+                title: "Alias conflict"),
 
-            CreateShortUrlStatus.InvalidAlias => BadRequest(Problem(
+            CreateShortUrlStatus.InvalidAlias => Problem(
                 detail: "The custom alias is invalid or reserved.",
                 statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid alias")),
+                title: "Invalid alias"),
 
-            _ => BadRequest(Problem(
+            CreateShortUrlStatus.InvalidExpiry => Problem(
+                detail: $"expiresInDays must be {ShortUrlService.MaxExpiryDays} days or less. " +
+                        "Use 0 or a negative value to create a link that never expires.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid expiration"),
+
+            _ => Problem(
                 detail: "The provided URL is invalid. Only absolute http/https URLs up to 2048 characters are accepted.",
                 statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid URL"))
+                title: "Invalid URL")
         };
     }
 
@@ -85,9 +91,11 @@ public sealed class UrlsController : ControllerBase
     /// <response code="401">The token is missing or invalid.</response>
     [HttpGet]
     [Authorize]
+    [EnableRateLimiting("list-urls")]
     [ProducesResponseType(typeof(PagedShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> List(
         [FromQuery, Range(1, int.MaxValue)] int page = DefaultPage,
         [FromQuery, Range(1, MaxPageSize)] int pageSize = DefaultPageSize,
@@ -130,10 +138,12 @@ public sealed class UrlsController : ControllerBase
     /// <response code="404">The short code does not exist.</response>
     [HttpDelete("{code}")]
     [Authorize]
+    [EnableRateLimiting("delete-url")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Delete(
         string code,
         CancellationToken cancellationToken)

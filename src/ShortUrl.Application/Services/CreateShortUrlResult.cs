@@ -7,7 +7,8 @@ public enum CreateShortUrlStatus
     Created,
     InvalidUrl,
     InvalidAlias,
-    AliasConflict
+    AliasConflict,
+    InvalidExpiry
 }
 
 public sealed record CreateShortUrlResult(CreateShortUrlStatus Status, ShortUrlResponse? Response)
@@ -23,4 +24,7 @@ public sealed record CreateShortUrlResult(CreateShortUrlStatus Status, ShortUrlR
 
     public static CreateShortUrlResult AliasConflict() =>
         new(CreateShortUrlStatus.AliasConflict, null);
+
+    public static CreateShortUrlResult InvalidExpiry() =>
+        new(CreateShortUrlStatus.InvalidExpiry, null);
 }

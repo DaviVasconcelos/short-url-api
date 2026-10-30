@@ -13,6 +13,9 @@ namespace ShortUrl.Application.Services;
 
 public sealed class ShortUrlService : IShortUrlService
 {
+    /// <summary>Upper bound for <c>expiresInDays</c>: ten years.</summary>
+    public const int MaxExpiryDays = 3650;
+
     private const int MaxUrlLength = 2048;
     private const int MaxCodeGenerationAttempts = 3;
 
@@ -55,7 +58,8 @@ public sealed class ShortUrlService : IShortUrlService
         if (alias is not null && (!AliasPattern.IsMatch(alias) || ReservedAliases.Contains(alias)))
             return CreateShortUrlResult.InvalidAlias();
 
-        var expiresAt = ResolveExpiry(request.ExpiresInDays);
+        if (!TryResolveExpiry(request.ExpiresInDays, out var expiresAt))
+            return CreateShortUrlResult.InvalidExpiry();
 
         return alias is not null
             ? await CreateWithAliasAsync(alias, originalUrl, expiresAt, ownerId, baseUrl, cancellationToken)
@@ -281,10 +285,20 @@ public sealed class ShortUrlService : IShortUrlService
             : $"{baseUrl.TrimEnd('/')}/{shortCode}";
     }
 
-    private DateTime? ResolveExpiry(int? expiresInDays)
+    private bool TryResolveExpiry(int? expiresInDays, out DateTime? expiresAt)
     {
+        expiresAt = null;
         var days = expiresInDays ?? _options.DefaultExpiryDays;
-        return days > 0 ? DateTime.UtcNow.AddDays(days) : null;
+
+        // Without this guard, a huge value reaches DateTime.AddDays and throws,
+        // turning a bad request into a 500.
+        if (days > MaxExpiryDays)
+            return false;
+
+        if (days > 0)
+            expiresAt = DateTime.UtcNow.AddDays(days);
+
+        return true;
     }
 
     private static bool TryNormalizeUrl(string? url, out string normalized)
