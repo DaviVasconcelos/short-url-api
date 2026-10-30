@@ -466,6 +466,43 @@ public sealed class ShortUrlServiceTests
         Assert.Equal("https://public.example/public-link", item.ShortUrl);
     }
 
+    [Fact]
+    public async Task CreateAsync_WithExpiryBeyondCap_ReturnsInvalidExpiry()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/too-long", null, int.MaxValue));
+
+        Assert.Equal(CreateShortUrlStatus.InvalidExpiry, result.Status);
+        Assert.Empty(ctx.Db.ShortUrls);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithMaxExpiry_CreatesLink()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/max", null, ShortUrlService.MaxExpiryDays));
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+        Assert.NotNull(result.Response!.ExpiresAt);
+        Assert.True(result.Response.ExpiresAt > DateTime.UtcNow.AddYears(9));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithZeroExpiry_NeverExpires()
+    {
+        using var ctx = new SqliteTestContext();
+
+        var result = await ctx.Service.CreateAsync(
+            new CreateShortUrlRequest("https://example.com/forever", null, 0));
+
+        Assert.Equal(CreateShortUrlStatus.Created, result.Status);
+        Assert.Null(result.Response!.ExpiresAt);
+    }
+
     private static async Task<Domain.User> AddUserAsync(
         SqliteTestContext ctx,
         string email)

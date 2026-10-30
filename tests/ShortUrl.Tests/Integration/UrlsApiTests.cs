@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using ShortUrl.Application.Dtos;
 
@@ -45,6 +46,22 @@ public sealed class UrlsApiTests : IClassFixture<ApiFactory>
         var response = await client.GetAsync("/nosuchcode");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WithExpiryBeyondCap_ReturnsBadRequest()
+    {
+        var client = CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/urls",
+            new CreateShortUrlRequest("https://example.com/too-long", null, int.MaxValue));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Invalid expiration", problem!.Title);
     }
 
     private HttpClient CreateClient() =>
